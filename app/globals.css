@@ -1,26 +1,89 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* editorial / газетная палитра */
+  --background: #f4f1e8; /* тёплая бумага */
+  --surface: #fbfaf4; /* карточка */
+  --surface-2: #ece7d9; /* вторичная заливка/чипы */
+  --border: #d8d3c3; /* тонкие линии */
+  --foreground: #1c1b17; /* чернила */
+  --muted: #76786c; /* серый текст */
+  --faint: #a9a799; /* выбывшие/приглушённое */
+  --accent: #14533a; /* тёмно-зелёный */
+  --accent-2: #2b4ea0; /* синий счёт */
+  --warn: #b45309;
+  --danger: #b22a1f;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
   --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
   --font-sans: var(--font-geist-sans);
+  --font-serif: var(--font-source-serif);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background-color: var(--background);
+  /* едва заметная точечная текстура бумаги */
+  background-image: radial-gradient(rgba(28, 27, 23, 0.035) 1px, transparent 1px);
+  background-size: 22px 22px;
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Серифные счёт/числа в editorial-стиле */
+.score {
+  font-family: var(--font-serif), Georgia, serif;
+  font-style: italic;
+  font-weight: 600;
+  color: var(--accent-2);
+  font-variant-numeric: tabular-nums;
+}
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+.serif {
+  font-family: var(--font-serif), Georgia, serif;
+}
+
+/* Заголовок-секция: ▪ LABEL ——— */
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+}
+.section-head::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  background: var(--accent);
+  flex: none;
+}
+.section-head::after {
+  content: "";
+  height: 2px;
+  background: var(--foreground);
+  flex: 1;
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.live-dot {
+  animation: pulse-live 1.2s ease-in-out infinite;
 }

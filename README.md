@@ -1,36 +1,99 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# WC2026 Predictor ⚽🏆
 
-## Getting Started
+Прогнозы, таблицы групп и лидерборд на ЧМ-2026 — для своих. Next.js (App Router) + Prisma + Postgres (Supabase).
 
-First, run the development server:
+Реализован **MVP** (PRD §8): инвайт-вход, синк матчей, прогнозы на счёт с дедлайн-локом, авто-начисление очков, лидерборд, live-результаты, таблицы групп, admin-панель с ручным вводом результатов.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Быстрый старт (локально)
+
+1. **Заведи базу.** Создай проект на [supabase.com](https://supabase.com) → Project Settings → Database → Connection string (URI). Скопируй `.env.example` в `.env` и подставь `DATABASE_URL` (pooler, порт 6543) и `DIRECT_URL` (порт 5432).
+
+   ```bash
+   cp .env.example .env
+   # отредактируй .env
+   ```
+
+   Локально можно и обычный Postgres: `DATABASE_URL=postgresql://localhost:5432/wc2026` (тогда `DIRECT_URL` = тот же).
+
+2. **Схема + демо-данные:**
+
+   ```bash
+   npm run db:push     # создаёт таблицы
+   npm run db:seed     # демо-матчи, юзеры, инвайты friend-1..3
+   ```
+
+3. **Запуск:**
+
+   ```bash
+   npm run dev
+   ```
+
+   Открой http://localhost:3000. Войди админом по коду из `ADMIN_INVITE_CODE` (по умолчанию `admin-первый-вход`) — получишь доступ к `/admin`.
+
+## Источник данных по матчам — ESPN (бесплатно, без ключа)
+
+Основной источник — неофициальный ESPN API (`site.api.espn.com`): счёт, статус, live, группы, стадии плей-офф и **детальная статистика матча** (удары, удары в створ, угловые, фолы, офсайды, владение, карточки, сейвы, передачи). Бесплатно, ключ не нужен. Клиент — `lib/espn.ts`.
+
+- **Импорт всех 104 матчей**: `/admin` → «Импорт из ESPN». Разово создаёт все матчи турнира.
+- **Live-синк**: `/admin` → «Синк сегодня» (или cron `/api/sync`) — обновляет сегодняшние матчи (счёт/статус/статистику) и пересчитывает очки.
+- **Fallback**: admin может ввести результат вручную (`/admin` → «Результаты матчей»).
+- Опционально вместо ESPN можно подключить self-host [`rezarahiminia/worldcup2026`](https://github.com/rezarahiminia/worldcup2026) через `WC_API_BASE_URL` — тогда синк берёт оттуда.
+
+Статистику ESPN отдаёт по завершённым/идущим матчам; на бесплатном тарифе API-Football её тоже можно брать (лимит 100/день), но ESPN надёжнее для нашего объёма.
+
+## Прогнозы на матч — рынки «как на бетке»
+
+Вместо одного точного счёта на каждый матч можно ставить по нескольким рынкам (всё считается из финального счёта 90 мин, коэффициентов нет). Очки — по сложности рынка:
+
+| Рынок | Варианты | Очки |
+|---|---|---|
+| Двойной шанс | 1X / 12 / X2 | 1 |
+| Чёт/нечёт | Чёт / Нечёт | 1 |
+| Тотал 1.5 | Больше / Меньше | 1 |
+| Исход | П1 / Х / П2 | 2 |
+| Обе забьют | Да / Нет | 2 |
+| Тотал 2.5 | Больше / Меньше | 2 |
+| Тотал 3.5 | Больше / Меньше | 2 |
+| Фора 1.5 (крупная победа) | П1 в 2+ / разница ≤1 / П2 в 2+ | 2 |
+| Точный счёт | счёт | 5 |
+
+Рынки и их разбор — в `lib/markets.ts` (легко добавить новые). Прогноз закрывается за 15 минут до старта (серверный лок). Статистические рынки (углы/карточки/удары) не делаем — нет бесплатного источника live-статистики по ЧМ-2026.
+
+Плюс отдельные прогнозы: выход из групп (3/5), сетка плей-офф (×1..×5), бонусы (чемпион 10, бомбардир 5).
+
+## Деплой на Vercel
+
+1. Запушь репо, импортируй в Vercel.
+2. Env vars: `DATABASE_URL`, `DIRECT_URL`, `ADMIN_INVITE_CODE`, опц. `WC_API_*`, `SYNC_SECRET`.
+3. Прогон миграции: `npm run db:push` (или `prisma migrate deploy`) против прод-базы.
+4. **Polling.** `vercel.json` содержит cron на `/api/sync` каждую минуту, но на Vercel **Hobby (free)** cron'ы запускаются только раз в день. Для опроса раз в минуту бесплатно — повесь внешний крон (например [cron-job.org](https://cron-job.org)) на `https://<твой-домен>/api/sync?key=<SYNC_SECRET>`.
+
+## Структура
+
+```
+app/
+  api/        join, predictions, sync, admin/*
+  matches/    список матчей с фильтрами
+  predict/    страница прогноза + таймер
+  leaderboard groups me admin
+lib/
+  db, session, api-client, sync, scoring, standings, deadline, format
+components/   Nav, MatchCard, PredictForm, Avatar, AutoRefresh
+prisma/       schema.prisma, seed.ts
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## V1 — готово ✅
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- [x] **Bracket Builder** (`/bracket`): сетка плей-офф по раундам, выбор победителя каждого матча, множители ×1..×5 (R32→Final), переключение между сетками участников
+- [x] **Прогнозы на выход из групп** (`/groups/predict`): 1-е/2-е место, +3 за победителя, +5 за обоих вышедших
+- [x] **Бонусы** (`/bonus`): чемпион (+10) и бомбардир (+5); admin задаёт факт в панели
+- [x] **Профиль** (`/me`): разбивка очков по источникам; **сравнение** двух участников (`/compare`) с head-to-head
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Все очки считаются единым идемпотентным движком `lib/recompute.ts` (можно гонять сколько угодно раз — итог не плывёт).
 
-## Learn More
+## Дальше (PRD V2, опционально)
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [ ] Push-уведомления (Telegram-бот / браузерные)
+- [ ] Мини-чат под матчем
+- [ ] Ачивки («Оракул» — 5 точных счётов подряд)
+- [ ] Экспорт сетки картинкой, PWA

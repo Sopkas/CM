@@ -1,0 +1,154 @@
+// WC2026 Predictor — модель данных
+// docs: PRD_WC2026_Predictions.md §5
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum MatchStatus {
+  scheduled
+  live
+  finished
+}
+
+enum BonusType {
+  champion
+  top_scorer
+}
+
+model User {
+  id         String   @id @default(cuid())
+  nickname   String   @unique
+  avatar     String? // emoji или URL картинки
+  isAdmin    Boolean  @default(false)
+  totalPoints Int     @default(0)
+  createdAt  DateTime @default(now())
+
+  marketPicks      MarketPick[]
+  groupPicks       GroupPick[]
+  knockoutPicks    KnockoutPick[]
+  bonusPredictions BonusPrediction[]
+
+  @@map("users")
+}
+
+// Инвайт-коды для входа (PRD §3.1, §10.3)
+model Invite {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  note      String? // для кого/заметка
+  usedAt    DateTime?
+  usedBy    String? // User.id того, кто активировал
+  createdAt DateTime  @default(now())
+
+  @@map("invites")
+}
+
+model Match {
+  id         String      @id @default(cuid())
+  externalId String      @unique // id из внешнего API
+  homeTeam   String
+  awayTeam   String
+  homeFlag   String?
+  awayFlag   String?
+  homeScore  Int?
+  awayScore  Int?
+  status     MatchStatus @default(scheduled)
+  minute     Int? // текущая минута для live
+  stage      String // 'group' | 'R32' | 'R16' | 'QF' | 'SF' | 'Final'
+  group      String? // 'A'..'L' для группового этапа
+  matchDate  DateTime
+  venue      String?
+  round      String?
+  scoredAt   DateTime? // когда очки за матч были начислены
+  stats          Json? // статистика матча из ESPN: { home: {label:value}, away: {...} }
+  statsUpdatedAt DateTime?
+
+  marketPicks   MarketPick[]
+  knockoutPicks KnockoutPick[]
+
+  @@index([status])
+  @@index([matchDate])
+  @@map("matches")
+}
+
+// Выбор по одному рынку матча (PRD-расширение «как на бетке»).
+// Рынки и их разбор — в lib/markets.ts. Один матч = до N выборов на пользователя.
+model MarketPick {
+  id           String   @id @default(cuid())
+  userId       String
+  matchId      String
+  market       String // ключ рынка: 'outcome' | 'total_2_5' | 'exact_score' | ...
+  selection    String // значение выбора: 'home' | 'over' | '2:1' | ...
+  pointsEarned Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, matchId, market])
+  @@index([matchId])
+  @@map("market_picks")
+}
+
+// Прогноз на выход из группы (V1, PRD §3.2): кто 1-е и 2-е место.
+model GroupPick {
+  id               String @id @default(cuid())
+  userId           String
+  group            String // 'A'..'L'
+  firstTeam        String // прогноз на 1-е место
+  secondTeam       String // прогноз на 2-е место
+  winnerPoints     Int    @default(0) // угадал победителя группы (+3)
+  qualifiersPoints Int    @default(0) // угадал обоих вышедших (+5)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, group])
+  @@map("group_picks")
+}
+
+// Прогноз на победителя конкретного матча плей-офф (V1, PRD §3.3, §10.4).
+// Очки = bracketRoundWin × множитель раунда, если угадал прошедшего дальше.
+model KnockoutPick {
+  id            String @id @default(cuid())
+  userId        String
+  matchId       String
+  predictedTeam String
+  pointsEarned  Int    @default(0)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, matchId])
+  @@index([matchId])
+  @@map("knockout_picks")
+}
+
+// Простое key-value для факта турнира: actualChampion, actualTopScorer и т.п.
+model Setting {
+  key   String @id
+  value String
+
+  @@map("settings")
+}
+
+// Бонусные прогнозы: чемпион, бомбардир (V1, PRD §3.2)
+model BonusPrediction {
+  id           String    @id @default(cuid())
+  userId       String
+  type         BonusType
+  value        String // имя команды/игрока
+  pointsEarned Int       @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@map("bonus_predictions")
+}

@@ -1,0 +1,17 @@
+[Unit]
+Description=Champions WC2026 (Next.js)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/champions
+EnvironmentFile=/opt/champions/.env
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

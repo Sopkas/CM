@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatMatchDate } from "@/lib/format";
+import { MARKET_BY_KEY, selectionLabel } from "@/lib/markets";
 
 interface Invite {
   id: string;
@@ -20,6 +21,17 @@ interface Match {
   matchDate: string;
   bettingOpen: boolean;
 }
+interface PlayerPick {
+  id: string;
+  userId: string;
+  nickname: string;
+  matchId: string;
+  match: string;
+  finished: boolean;
+  market: string;
+  selection: string;
+  points: number;
+}
 
 export function AdminPanel({
   invites,
@@ -28,6 +40,7 @@ export function AdminPanel({
   topScorer,
   predictionsOpenUntil,
   bracketLocked,
+  playerPicks,
 }: {
   invites: Invite[];
   matches: Match[];
@@ -35,12 +48,14 @@ export function AdminPanel({
   topScorer: string | null;
   predictionsOpenUntil: string | null;
   bracketLocked: boolean;
+  playerPicks: PlayerPick[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [champ, setChamp] = useState(champion ?? "");
   const [scorer, setScorer] = useState(topScorer ?? "");
   const [openUntil, setOpenUntil] = useState(predictionsOpenUntil ?? "");
+  const [selUser, setSelUser] = useState("");
   const [origin, setOrigin] = useState("");
   if (typeof window !== "undefined" && !origin) setOrigin(window.location.origin);
 
@@ -65,6 +80,19 @@ export function AdminPanel({
     const until = new Date(Date.now() + days * 86400_000).toISOString();
     setOpenUntil(until);
     saveConfig({ predictionsOpenUntil: until });
+  }
+
+  async function cancelPicks(body: { pickId?: string; userId?: string; matchId?: string }) {
+    setBusy("picks");
+    const res = await fetch("/api/admin/picks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!data.ok) alert(data.error ?? "Ошибка");
+    router.refresh();
+    setBusy(null);
   }
 
   async function createInvite() {
@@ -202,6 +230,22 @@ export function AdminPanel({
             {bracketLocked ? "Открыть сетку" : "Закрыть сетку"}
           </button>
         </div>
+      </section>
+
+      {/* Ставки игроков — отмена */}
+      <section className="rounded-xl border border-border bg-surface p-4 space-y-3">
+        <h2 className="font-semibold text-sm">Ставки игроков (отмена)</h2>
+        <p className="text-xs text-muted">
+          Выбери участника → отмени промахнувшуюся котировку или весь матч. После отмены
+          можно поставить заново (закрытый матч — открой через «🔓 Открыть ставки»).
+        </p>
+        <PlayerPicksManager
+          picks={playerPicks}
+          selUser={selUser}
+          setSelUser={setSelUser}
+          onCancel={cancelPicks}
+          busy={busy === "picks"}
+        />
       </section>
 
       {/* Факт турнира */}
@@ -375,6 +419,103 @@ function ResultRow({ match, onSaved }: { match: Match; onSaved: () => void }) {
       >
         {betBusy ? "…" : betOpen ? "🔓 Ставки открыты (анлок) — нажми чтобы закрыть" : "🔒 Открыть ставки (анлок дедлайна)"}
       </button>
+    </div>
+  );
+}
+
+function PlayerPicksManager({
+  picks,
+  selUser,
+  setSelUser,
+  onCancel,
+  busy,
+}: {
+  picks: PlayerPick[];
+  selUser: string;
+  setSelUser: (v: string) => void;
+  onCancel: (body: { pickId?: string; userId?: string; matchId?: string }) => void;
+  busy: boolean;
+}) {
+  const users = Array.from(new Map(picks.map((p) => [p.userId, p.nickname])))
+    .map(([id, nickname]) => ({ id, nickname }))
+    .sort((a, b) => a.nickname.localeCompare(b.nickname));
+
+  if (users.length === 0) {
+    return <p className="text-xs text-muted">Ставок пока нет.</p>;
+  }
+
+  const mine = picks.filter((p) => p.userId === selUser);
+  const byMatch = new Map<string, { match: string; finished: boolean; items: PlayerPick[] }>();
+  for (const p of mine) {
+    let e = byMatch.get(p.matchId);
+    if (!e) {
+      e = { match: p.match, finished: p.finished, items: [] };
+      byMatch.set(p.matchId, e);
+    }
+    e.items.push(p);
+  }
+
+  return (
+    <div className="space-y-3">
+      <select
+        value={selUser}
+        onChange={(e) => setSelUser(e.target.value)}
+        className="w-full bg-surface-2 rounded-lg px-3 py-2 text-sm"
+      >
+        <option value="">— выбери участника —</option>
+        {users.map((u) => (
+          <option key={u.id} value={u.id}>
+            {u.nickname}
+          </option>
+        ))}
+      </select>
+
+      {selUser &&
+        (byMatch.size === 0 ? (
+          <p className="text-xs text-muted">У участника нет ставок.</p>
+        ) : (
+          [...byMatch.entries()].map(([matchId, g]) => (
+            <div key={matchId} className="bg-surface-2 rounded-lg p-2.5 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium truncate">{g.match}</span>
+                <button
+                  disabled={busy}
+                  onClick={() => {
+                    if (confirm(`Отменить ВСЕ ставки участника на «${g.match}»?`))
+                      onCancel({ userId: selUser, matchId });
+                  }}
+                  className="text-xs text-danger shrink-0 disabled:opacity-50"
+                >
+                  отменить матч
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {g.items.map((p) => (
+                  <span
+                    key={p.id}
+                    className="text-xs bg-background rounded-lg px-2 py-1 flex items-center gap-1.5"
+                  >
+                    <span className="opacity-70">{MARKET_BY_KEY.get(p.market)?.label ?? p.market}:</span>
+                    <span className="font-semibold">{selectionLabel(p.market, p.selection)}</span>
+                    {g.finished && (
+                      <span className={p.points > 0 ? "text-accent" : p.points < 0 ? "text-danger" : "text-muted"}>
+                        {p.points > 0 ? `+${p.points}` : p.points}
+                      </span>
+                    )}
+                    <button
+                      disabled={busy}
+                      onClick={() => onCancel({ pickId: p.id })}
+                      className="text-danger font-bold disabled:opacity-50"
+                      title="отменить котировку"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))
+        ))}
     </div>
   );
 }

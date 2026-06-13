@@ -11,7 +11,7 @@ export default async function AdminPage() {
   if (!user) redirect("/join");
   if (!user.isAdmin) redirect("/");
 
-  const [invites, matches, champion, topScorer, predictionsOpenUntil, bracketLockedRaw] =
+  const [invites, matches, champion, topScorer, predictionsOpenUntil, bracketLockedRaw, picks] =
     await Promise.all([
       db.invite.findMany({ orderBy: { createdAt: "desc" } }),
       db.match.findMany({ orderBy: { matchDate: "asc" } }),
@@ -19,6 +19,13 @@ export default async function AdminPage() {
       getSetting("actualTopScorer"),
       getSetting("predictionsOpenUntil"),
       getSetting("bracketLocked"),
+      db.marketPick.findMany({
+        include: {
+          user: { select: { nickname: true } },
+          match: { select: { homeTeam: true, awayTeam: true, status: true, matchDate: true } },
+        },
+        orderBy: { match: { matchDate: "asc" } },
+      }),
     ]);
 
   return (
@@ -42,6 +49,17 @@ export default async function AdminPage() {
         status: m.status,
         matchDate: m.matchDate.toISOString(),
         bettingOpen: m.bettingOpen,
+      }))}
+      playerPicks={picks.map((p) => ({
+        id: p.id,
+        userId: p.userId,
+        nickname: p.user.nickname,
+        matchId: p.matchId,
+        match: `${p.match.homeTeam} — ${p.match.awayTeam}`,
+        finished: p.match.status === "finished",
+        market: p.market,
+        selection: p.selection,
+        points: p.pointsEarned,
       }))}
     />
   );

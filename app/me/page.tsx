@@ -108,10 +108,14 @@ function StatusPill({ status, points }: { status: string; points: number }) {
   return (
     <span
       className={`px-1.5 rounded text-xs font-semibold ${
-        points > 0 ? "bg-accent/20 text-accent" : "bg-danger/20 text-danger"
+        points > 0
+          ? "bg-accent/20 text-accent"
+          : points < 0
+            ? "bg-danger/20 text-danger"
+            : "bg-surface-2 text-muted"
       }`}
     >
-      +{points}
+      {points > 0 ? `+${points}` : points}
     </span>
   );
 }

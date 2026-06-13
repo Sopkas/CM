@@ -141,14 +141,18 @@ function FormStrip({ recent }: { recent: DashboardData["recent"] }) {
             key={m.matchId}
             href={`/predict/${m.matchId}`}
             className="flex flex-col items-center gap-1 shrink-0"
-            title={`${m.homeTeam} — ${m.awayTeam}: +${m.points} (${m.count} рынк.)`}
+            title={`${m.homeTeam} — ${m.awayTeam}: ${m.points > 0 ? `+${m.points}` : m.points} (${m.count} рынк.)`}
           >
             <span
               className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold font-mono ${
-                m.hit ? "bg-accent/20 text-accent" : "bg-danger/15 text-danger"
+                m.points > 0
+                  ? "bg-accent/20 text-accent"
+                  : m.points < 0
+                    ? "bg-danger/15 text-danger"
+                    : "bg-surface-2 text-muted"
               }`}
             >
-              +{m.points}
+              {m.points > 0 ? `+${m.points}` : m.points}
             </span>
             <span className="text-[9px] text-muted max-w-12 truncate text-center leading-tight">
               {abbr(m.homeTeam)}–{abbr(m.awayTeam)}
@@ -177,7 +181,7 @@ function MarketAccuracyList({
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="font-medium truncate">{label}</span>
                 <span className="text-muted font-mono shrink-0 ml-2">
-                  {m.correct}/{m.played} · {pct}% · +{m.points}
+                  {m.correct}/{m.played} · {pct}% · {m.points > 0 ? `+${m.points}` : m.points}
                 </span>
               </div>
               <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden">

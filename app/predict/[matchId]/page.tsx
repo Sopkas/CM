@@ -184,7 +184,9 @@ export default async function PredictPage({
                       <span className="font-medium truncate">{p.nickname}</span>
                     </Link>
                     {match.status === "finished" && (
-                      <span className="font-mono font-bold text-accent">+{p.total}</span>
+                      <span className={`font-mono font-bold ${p.total >= 0 ? "text-accent" : "text-danger"}`}>
+                        {p.total > 0 ? `+${p.total}` : p.total}
+                      </span>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -234,7 +236,9 @@ function MyPicksSummary({
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm font-semibold">Твой прогноз</span>
         {finished ? (
-          <span className="font-mono font-bold text-accent">+{total}</span>
+          <span className={`font-mono font-bold ${total >= 0 ? "text-accent" : "text-danger"}`}>
+            {total > 0 ? `+${total}` : total}
+          </span>
         ) : (
           <span className="text-xs text-muted">
             {locked ? "приём закрыт" : "ставка принята — изменить нельзя"}
@@ -272,12 +276,16 @@ function PickChip({
     ? "bg-surface-2 text-foreground"
     : points > 0
       ? "bg-accent/20 text-accent"
-      : "bg-danger/15 text-danger";
+      : points < 0
+        ? "bg-danger/15 text-danger"
+        : "bg-surface-2 text-muted";
   return (
     <span className={`text-xs px-2 py-1 rounded-lg ${tone}`}>
       <span className="opacity-70">{def?.label ?? market}:</span>{" "}
       <span className="font-semibold">{selectionLabel(market, selection)}</span>
-      {finished && points > 0 && <span className="ml-1">+{points}</span>}
+      {finished && points !== 0 && (
+        <span className="ml-1">{points > 0 ? `+${points}` : points}</span>
+      )}
     </span>
   );
 }

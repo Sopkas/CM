@@ -738,7 +738,8 @@ export const MARKET_BY_KEY = new Map(MARKETS.map((m) => [m.key, m]));
 const TAB_ORDER = ["Исход", "Тотал", "Фора", "Голы", "Счёт", "Тайм/матч", "Экспресс", "Удары", "Угловые", "Карточки", "Прочее"];
 export const MARKET_TABS = TAB_ORDER.filter((t) => MARKETS.some((m) => m.tab === t));
 
-// Очки за выбор по рынку и контексту.
+// Очки за выбор: угадал = +points, не угадал = −points,
+// не определить (нет статы/счёта таймов) = 0 (без штрафа).
 export function scoreMarketPick(
   marketKey: string,
   selection: string,
@@ -746,7 +747,10 @@ export function scoreMarketPick(
 ): number {
   const def = MARKET_BY_KEY.get(marketKey);
   if (!def) return 0;
-  return def.evaluate(selection, ctx) === true ? def.points : 0;
+  const r = def.evaluate(selection, ctx);
+  if (r === true) return def.points;
+  if (r === false) return -def.points;
+  return 0;
 }
 
 // Человекочитаемая подпись выбора (для списков прогнозов).

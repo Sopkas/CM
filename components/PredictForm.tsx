@@ -132,7 +132,7 @@ export function PredictForm({
           : "⚠️ Ставка одноразовая — после сохранения изменить нельзя."}
       </p>
       <p className="text-xs text-muted text-center">
-        Выбрано <span className="font-semibold text-foreground">{chosenCount}/{MAX_PICKS}</span> котировок · считаются отдельно (минуса за проигрыш нет)
+        Выбрано <span className="font-semibold text-foreground">{chosenCount}/{MAX_PICKS}</span> котировок · считаются отдельно · <span className="text-warn">за неверный −очки</span>
       </p>
 
       {/* Поиск */}
@@ -220,7 +220,7 @@ function MarketCard({
           <span className="text-[11px] text-muted">{m.subtitle}</span>
         </span>
         <span className="flex items-center gap-2 shrink-0">
-          <span className="text-[11px] text-accent-2">+{m.points}</span>
+          <span className="text-[11px] text-accent-2">±{m.points}</span>
           <span className="text-muted text-xs">{open ? "▲" : "▼"}</span>
         </span>
       </button>
@@ -267,7 +267,7 @@ function ExactScoreCard({
           Точный счёт{value && <span className="text-accent"> ●</span>}
         </span>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-accent-2">+{points}</span>
+          <span className="text-[11px] text-accent-2">±{points}</span>
           <button
             onClick={() => onChange(enabled ? null : "0:0")}
             className={`text-xs px-2 py-0.5 rounded ${

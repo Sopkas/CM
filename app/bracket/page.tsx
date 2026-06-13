@@ -2,6 +2,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { isLocked } from "@/lib/deadline";
+import { isBracketLocked } from "@/lib/windows";
 import { matchWinner } from "@/lib/scoring";
 import { BracketView, type BracketMatch } from "@/components/BracketView";
 import { AutoRefresh } from "@/components/AutoRefresh";
@@ -17,9 +18,11 @@ export default async function BracketPage({
   const { u } = await searchParams;
   const me = await getCurrentUser();
 
+  const bracketLocked = await isBracketLocked();
+
   // Чью сетку показываем: свою (редактируемую) или другого участника (read-only).
   const viewUserId = u ?? me?.id ?? null;
-  const editable = !!me && viewUserId === me.id;
+  const editable = !!me && viewUserId === me.id && !bracketLocked;
 
   const [matches, picks, participants, viewUser] = await Promise.all([
     db.match.findMany({
@@ -121,7 +124,20 @@ export default async function BracketPage({
           )}
           {/* Сетка вырывается из узкой колонки на всю ширину экрана */}
           <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4">
-            <BracketView matches={data} editable={editable} />
+            <div className={bracketLocked ? "blur-[6px] pointer-events-none select-none" : ""}>
+              <BracketView matches={data} editable={editable} />
+            </div>
+            {bracketLocked && (
+              <div className="absolute inset-0 flex items-center justify-center p-4">
+                <div className="rounded-xl border border-border bg-surface/95 px-6 py-5 text-center shadow-xl max-w-xs">
+                  <div className="text-3xl mb-1">🔒</div>
+                  <div className="font-semibold">Сетка пока закрыта</div>
+                  <p className="text-sm text-muted mt-1">
+                    Откроется, когда закончится групповой этап.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}

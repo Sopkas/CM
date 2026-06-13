@@ -43,6 +43,9 @@ export default async function PredictPage({
     ? await db.marketPick.findMany({ where: { userId: user.id, matchId } })
     : [];
   const hasBet = myPicks.length > 0;
+  const bettingOpen = match.bettingOpen; // админ-анлок: можно ставить/переставлять
+  const initialPicks: Record<string, string> = {};
+  for (const p of myPicks) initialPicks[p.market] = p.selection;
 
   // Чужие прогнозы видны всем залогиненным в любой момент.
   const others = user
@@ -129,6 +132,20 @@ export default async function PredictPage({
           </Link>
           , чтобы сделать прогноз.
         </div>
+      ) : bettingOpen ? (
+        <>
+          <div className="rounded-lg bg-accent/15 text-accent text-xs text-center py-1.5">
+            🔓 Админ открыл ставки на этот матч — можно поставить или переставить
+          </div>
+          <PredictForm
+            matchId={match.id}
+            homeTeam={match.homeTeam}
+            awayTeam={match.awayTeam}
+            deadlineMs={deadlineFor(match.matchDate).getTime()}
+            initialPicks={initialPicks}
+            forceOpen
+          />
+        </>
       ) : locked || hasBet ? (
         <MyPicksSummary
           picks={myPicks}

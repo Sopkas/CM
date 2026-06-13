@@ -9,11 +9,12 @@ import { MARKET_BY_KEY } from "@/lib/markets";
 
 const pickSchema = z.object({
   market: z.string().min(1),
-  selection: z.string().min(1).max(20),
+  selection: z.string().min(1).max(40),
 });
+export const MAX_PICKS_PER_MATCH = 3;
 const schema = z.object({
   matchId: z.string().min(1),
-  picks: z.array(pickSchema).min(1).max(20),
+  picks: z.array(pickSchema).min(1).max(MAX_PICKS_PER_MATCH),
 });
 
 function validSelection(market: string, selection: string): boolean {
@@ -35,7 +36,8 @@ export async function POST(req: NextRequest) {
 
   const match = await db.match.findUnique({ where: { id: matchId } });
   if (!match) return NextResponse.json({ error: "Матч не найден" }, { status: 404 });
-  if (isLocked(match.matchDate)) {
+  // Админ-анлок (match.bettingOpen) обходит дедлайн.
+  if (isLocked(match.matchDate) && !match.bettingOpen) {
     return NextResponse.json({ error: "Дедлайн прошёл — прогноз закрыт" }, { status: 423 });
   }
 
@@ -46,6 +48,22 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+  }
+
+  // Анлок: полная замена выборов (≤3), чтобы не накапливать сверх лимита.
+  if (match.bettingOpen) {
+    await db.$transaction([
+      db.marketPick.deleteMany({ where: { userId: user.id, matchId } }),
+      db.marketPick.createMany({
+        data: picks.map((p) => ({
+          userId: user.id,
+          matchId,
+          market: p.market,
+          selection: p.selection,
+        })),
+      }),
+    ]);
+    return NextResponse.json({ ok: true, saved: picks.length });
   }
 
   // Ставка одноразовая: если по матчу уже есть хоть один выбор — менять нельзя.

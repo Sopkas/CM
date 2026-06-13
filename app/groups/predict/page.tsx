@@ -2,6 +2,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { getGroupTeams, groupDeadline } from "@/lib/tournament";
+import { predictionsWindowOpen, deadlinePassed } from "@/lib/windows";
 import { GroupPicksForm, type GroupData } from "@/components/GroupPicksForm";
 
 export const dynamic = "force-dynamic";
@@ -26,11 +27,13 @@ export default async function GroupPredictPage() {
   const teamsByGroup = await getGroupTeams();
   const myPicks = await db.groupPick.findMany({ where: { userId: user.id } });
   const pickByGroup = new Map(myPicks.map((p) => [p.group, p]));
+  const windowOpen = await predictionsWindowOpen();
 
   const groups: GroupData[] = [];
   for (const [group, teams] of teamsByGroup) {
     const deadline = await groupDeadline(group);
-    const locked = !!deadline && Date.now() >= deadline.getTime();
+    // Окно прогнозов (админ) перекрывает обычный дедлайн группы.
+    const locked = windowOpen ? false : deadlinePassed(deadline);
     const pick = pickByGroup.get(group);
     groups.push({
       group,

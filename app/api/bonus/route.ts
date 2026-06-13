@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { tournamentDeadline } from "@/lib/tournament";
+import { predictionsWindowOpen } from "@/lib/windows";
 
 const schema = z.object({
   type: z.enum(["champion", "top_scorer"]),
@@ -20,12 +21,15 @@ export async function POST(req: NextRequest) {
   }
   const { type, value } = parsed.data;
 
-  const deadline = await tournamentDeadline();
-  if (deadline && Date.now() >= deadline.getTime()) {
-    return NextResponse.json(
-      { error: "Бонусы закрыты — турнир начался" },
-      { status: 423 },
-    );
+  // Окно прогнозов (админ) перекрывает обычный дедлайн старта турнира.
+  if (!(await predictionsWindowOpen())) {
+    const deadline = await tournamentDeadline();
+    if (deadline && Date.now() >= deadline.getTime()) {
+      return NextResponse.json(
+        { error: "Бонусы закрыты — турнир начался" },
+        { status: 423 },
+      );
+    }
   }
 
   const pick = await db.bonusPrediction.upsert({

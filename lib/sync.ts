@@ -8,6 +8,7 @@ import {
   fetchAllEspnMatches,
   fetchTodayEspnMatches,
   fetchEspnMatchStats,
+  fetchEspnMatchHt,
 } from "@/lib/espn";
 import { recomputeAllPoints } from "@/lib/recompute";
 
@@ -57,12 +58,21 @@ async function pullStats(externalIds: string[]): Promise<number> {
   for (const ext of externalIds) {
     if (!ext.startsWith("espn:")) continue;
     try {
-      const stats = await fetchEspnMatchStats(ext);
+      const [stats, ht] = await Promise.all([
+        fetchEspnMatchStats(ext).catch(() => null),
+        fetchEspnMatchHt(ext).catch(() => null),
+      ]);
+      const data: Record<string, unknown> = {};
       if (stats) {
-        await db.match.update({
-          where: { externalId: ext },
-          data: { stats: stats as unknown as object, statsUpdatedAt: new Date() },
-        });
+        data.stats = stats as unknown as object;
+        data.statsUpdatedAt = new Date();
+      }
+      if (ht) {
+        data.homeHt = ht.home;
+        data.awayHt = ht.away;
+      }
+      if (Object.keys(data).length > 0) {
+        await db.match.update({ where: { externalId: ext }, data });
         updated++;
       }
     } catch {

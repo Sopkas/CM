@@ -234,6 +234,34 @@ export async function fetchEspnMatchStats(eventId: string): Promise<MatchStats |
   return result;
 }
 
+// Счёт 1-го тайма из summary (header.competitors[].linescores[0]).
+export async function fetchEspnMatchHt(
+  eventId: string,
+): Promise<{ home: number; away: number } | null> {
+  const id = eventId.replace(/^espn:/, "");
+  const data = (await getJson(`${BASE}/summary?event=${id}`)) as {
+    header?: {
+      competitions?: {
+        competitors?: { homeAway?: string; linescores?: { displayValue?: string }[] }[];
+      }[];
+    };
+  };
+  const comps = data.header?.competitions?.[0]?.competitors;
+  if (!comps) return null;
+  let home: number | null = null;
+  let away: number | null = null;
+  for (const c of comps) {
+    const v = c.linescores?.[0]?.displayValue;
+    if (v == null) continue;
+    const n = parseInt(v, 10);
+    if (Number.isNaN(n)) continue;
+    if (c.homeAway === "home") home = n;
+    else if (c.homeAway === "away") away = n;
+  }
+  if (home == null || away == null) return null;
+  return { home, away };
+}
+
 // ─── Составы + форма (из того же summary) ───────────────────────────────────
 // Рейтингов игроков ESPN не отдаёт; берём формацию, позиции, голы/карточки/замены.
 

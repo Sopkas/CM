@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { groupDeadline } from "@/lib/tournament";
+import { predictionsWindowOpen } from "@/lib/windows";
 
 const schema = z.object({
   group: z.string().min(1).max(2),
@@ -28,9 +29,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const deadline = await groupDeadline(group);
-  if (deadline && Date.now() >= deadline.getTime()) {
-    return NextResponse.json({ error: "Дедлайн по группе прошёл" }, { status: 423 });
+  // Окно прогнозов (админ) перекрывает обычный дедлайн группы.
+  if (!(await predictionsWindowOpen())) {
+    const deadline = await groupDeadline(group);
+    if (deadline && Date.now() >= deadline.getTime()) {
+      return NextResponse.json({ error: "Дедлайн по группе прошёл" }, { status: 423 });
+    }
   }
 
   const pick = await db.groupPick.upsert({

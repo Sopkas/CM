@@ -60,6 +60,8 @@ model Match {
   awayFlag   String?
   homeScore  Int?
   awayScore  Int?
+  homeHt     Int? // счёт 1-го тайма (для тайм-рынков), из ESPN linescores
+  awayHt     Int?
   status     MatchStatus @default(scheduled)
   minute     Int? // текущая минута для live
   stage      String // 'group' | 'R32' | 'R16' | 'QF' | 'SF' | 'Final'
@@ -68,6 +70,7 @@ model Match {
   venue      String?
   round      String?
   scoredAt   DateTime? // когда очки за матч были начислены
+  bettingOpen Boolean  @default(false) // админ-анлок: ставки открыты несмотря на дедлайн
   stats          Json? // статистика матча из ESPN: { home: {label:value}, away: {...} }
   statsUpdatedAt DateTime?
 

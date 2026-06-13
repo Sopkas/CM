@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { getAllTeams, tournamentDeadline } from "@/lib/tournament";
 import { getSetting } from "@/lib/recompute";
+import { predictionsWindowOpen, deadlinePassed } from "@/lib/windows";
 import { BonusForm } from "@/components/BonusForm";
 import { Avatar } from "@/components/Avatar";
 
@@ -10,14 +11,16 @@ export const dynamic = "force-dynamic";
 
 export default async function BonusPage() {
   const user = await getCurrentUser();
-  const [teams, deadline, actualChampion, actualTopScorer] = await Promise.all([
+  const [teams, deadline, actualChampion, actualTopScorer, windowOpen] = await Promise.all([
     getAllTeams(),
     tournamentDeadline(),
     getSetting("actualChampion"),
     getSetting("actualTopScorer"),
+    predictionsWindowOpen(),
   ]);
 
-  const locked = !!deadline && Date.now() >= deadline.getTime();
+  // Окно прогнозов (админ) перекрывает обычный дедлайн.
+  const locked = windowOpen ? false : deadlinePassed(deadline);
 
   const myPicks = user
     ? await db.bonusPrediction.findMany({ where: { userId: user.id } })

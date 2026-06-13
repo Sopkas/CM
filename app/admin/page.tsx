@@ -11,17 +11,22 @@ export default async function AdminPage() {
   if (!user) redirect("/join");
   if (!user.isAdmin) redirect("/");
 
-  const [invites, matches, champion, topScorer] = await Promise.all([
-    db.invite.findMany({ orderBy: { createdAt: "desc" } }),
-    db.match.findMany({ orderBy: { matchDate: "asc" } }),
-    getSetting("actualChampion"),
-    getSetting("actualTopScorer"),
-  ]);
+  const [invites, matches, champion, topScorer, predictionsOpenUntil, bracketLockedRaw] =
+    await Promise.all([
+      db.invite.findMany({ orderBy: { createdAt: "desc" } }),
+      db.match.findMany({ orderBy: { matchDate: "asc" } }),
+      getSetting("actualChampion"),
+      getSetting("actualTopScorer"),
+      getSetting("predictionsOpenUntil"),
+      getSetting("bracketLocked"),
+    ]);
 
   return (
     <AdminPanel
       champion={champion}
       topScorer={topScorer}
+      predictionsOpenUntil={predictionsOpenUntil || null}
+      bracketLocked={bracketLockedRaw !== "false"}
       invites={invites.map((i) => ({
         id: i.id,
         code: i.code,
@@ -36,6 +41,7 @@ export default async function AdminPage() {
         awayScore: m.awayScore,
         status: m.status,
         matchDate: m.matchDate.toISOString(),
+        bettingOpen: m.bettingOpen,
       }))}
     />
   );

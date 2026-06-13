@@ -18,6 +18,7 @@ interface Match {
   awayScore: number | null;
   status: string;
   matchDate: string;
+  bettingOpen: boolean;
 }
 
 export function AdminPanel({
@@ -25,18 +26,46 @@ export function AdminPanel({
   matches,
   champion,
   topScorer,
+  predictionsOpenUntil,
+  bracketLocked,
 }: {
   invites: Invite[];
   matches: Match[];
   champion: string | null;
   topScorer: string | null;
+  predictionsOpenUntil: string | null;
+  bracketLocked: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [champ, setChamp] = useState(champion ?? "");
   const [scorer, setScorer] = useState(topScorer ?? "");
+  const [openUntil, setOpenUntil] = useState(predictionsOpenUntil ?? "");
   const [origin, setOrigin] = useState("");
   if (typeof window !== "undefined" && !origin) setOrigin(window.location.origin);
+
+  async function saveConfig(body: {
+    predictionsOpenUntil?: string | null;
+    bracketLocked?: boolean;
+  }) {
+    setBusy("config");
+    const res = await fetch("/api/admin/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!data.ok) alert(data.error ?? "Ошибка");
+    router.refresh();
+    setBusy(null);
+  }
+
+  // открыть бонусы+группы на N дней вперёд
+  function openPredictionsForDays(days: number) {
+    const until = new Date(Date.now() + days * 86400_000).toISOString();
+    setOpenUntil(until);
+    saveConfig({ predictionsOpenUntil: until });
+  }
 
   async function createInvite() {
     setBusy("invite");
@@ -110,6 +139,67 @@ export function AdminPanel({
             className="bg-accent-2 text-background font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50"
           >
             {busy === "sync" ? "Синкаю…" : "Синк сегодня"}
+          </button>
+        </div>
+      </section>
+
+      {/* Окна прогнозов */}
+      <section className="rounded-xl border border-border bg-surface p-4 space-y-3">
+        <h2 className="font-semibold text-sm">Окна прогнозов</h2>
+
+        <div className="space-y-1.5">
+          <p className="text-xs text-muted">
+            Бонусы (чемпион/бомбардир) и прогнозы на группы.{" "}
+            {openUntil ? (
+              <span className="text-accent">
+                открыто до {new Date(openUntil).toLocaleString("ru-RU")}
+              </span>
+            ) : (
+              <span className="text-muted">по обычному дедлайну (старт турнира/группы)</span>
+            )}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => openPredictionsForDays(7)}
+              disabled={busy === "config"}
+              className="bg-accent text-background font-semibold px-3 py-1.5 rounded-lg text-sm disabled:opacity-50"
+            >
+              Открыть на неделю
+            </button>
+            <button
+              onClick={() => openPredictionsForDays(3)}
+              disabled={busy === "config"}
+              className="bg-surface-2 px-3 py-1.5 rounded-lg text-sm disabled:opacity-50"
+            >
+              на 3 дня
+            </button>
+            {openUntil && (
+              <button
+                onClick={() => { setOpenUntil(""); saveConfig({ predictionsOpenUntil: "" }); }}
+                disabled={busy === "config"}
+                className="bg-danger/15 text-danger px-3 py-1.5 rounded-lg text-sm disabled:opacity-50"
+              >
+                Закрыть окно
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-border pt-3">
+          <div>
+            <div className="text-sm font-medium">Сетка плей-офф</div>
+            <div className="text-xs text-muted">
+              {bracketLocked ? "закрыта (блюр у участников)" : "открыта для прогнозов"}
+            </div>
+          </div>
+          <button
+            onClick={() => saveConfig({ bracketLocked: !bracketLocked })}
+            disabled={busy === "config"}
+            className={`px-3 py-1.5 rounded-lg text-sm font-semibold disabled:opacity-50 ${
+              bracketLocked ? "bg-accent text-background" : "bg-surface-2"
+            }`}
+          >
+            {bracketLocked ? "Открыть сетку" : "Закрыть сетку"}
           </button>
         </div>
       </section>
@@ -202,6 +292,21 @@ function ResultRow({ match, onSaved }: { match: Match; onSaved: () => void }) {
   const [away, setAway] = useState(match.awayScore ?? 0);
   const [status, setStatus] = useState(match.status);
   const [saving, setSaving] = useState(false);
+  const [betOpen, setBetOpen] = useState(match.bettingOpen);
+  const [betBusy, setBetBusy] = useState(false);
+
+  async function toggleBetting() {
+    setBetBusy(true);
+    const next = !betOpen;
+    const res = await fetch(`/api/admin/matches/${match.id}/betting`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ open: next }),
+    });
+    if (res.ok) setBetOpen(next);
+    else alert("Ошибка");
+    setBetBusy(false);
+  }
 
   async function save() {
     setSaving(true);
@@ -261,6 +366,15 @@ function ResultRow({ match, onSaved }: { match: Match; onSaved: () => void }) {
           {saving ? "…" : "Сохранить"}
         </button>
       </div>
+      <button
+        onClick={toggleBetting}
+        disabled={betBusy}
+        className={`w-full py-1.5 rounded text-xs font-semibold disabled:opacity-50 ${
+          betOpen ? "bg-accent/20 text-accent" : "bg-background text-muted"
+        }`}
+      >
+        {betBusy ? "…" : betOpen ? "🔓 Ставки открыты (анлок) — нажми чтобы закрыть" : "🔒 Открыть ставки (анлок дедлайна)"}
+      </button>
     </div>
   );
 }

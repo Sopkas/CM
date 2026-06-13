@@ -2,13 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MARKETS, MARKET_GROUPS } from "@/lib/markets";
+import { MARKETS, MARKET_TABS, type MarketDef } from "@/lib/markets";
+
+const MAX_PICKS = 3; // не больше 3 котировок на матч
 
 interface Props {
   matchId: string;
   homeTeam: string;
   awayTeam: string;
   deadlineMs: number;
+  initialPicks?: Record<string, string>;
+  forceOpen?: boolean;
 }
 
 export function PredictForm({
@@ -16,32 +20,66 @@ export function PredictForm({
   homeTeam,
   awayTeam,
   deadlineMs,
+  initialPicks,
+  forceOpen = false,
 }: Props) {
   const router = useRouter();
-  const [picks, setPicks] = useState<Record<string, string>>({});
+  const [picks, setPicks] = useState<Record<string, string>>(initialPicks ?? {});
+  const [tab, setTab] = useState<string>(MARKET_TABS[0]);
+  const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [remaining, setRemaining] = useState(deadlineMs - Date.now());
+  const [remaining, setRemaining] = useState(() => deadlineMs - Date.now());
 
   useEffect(() => {
     const id = setInterval(() => setRemaining(deadlineMs - Date.now()), 1000);
     return () => clearInterval(id);
   }, [deadlineMs]);
 
-  const locked = remaining <= 0;
+  const locked = remaining <= 0 && !forceOpen;
   const chosenCount = Object.keys(picks).length;
+  const legend = useMemo(() => `П1 — ${homeTeam} · П2 — ${awayTeam}`, [homeTeam, awayTeam]);
 
-  // подмена П1/П2 на названия команд в подсказке
-  const legend = useMemo(
-    () => `П1 — ${homeTeam} · П2 — ${awayTeam}`,
-    [homeTeam, awayTeam],
-  );
+  // какие рынки показывать: при поиске — по всем вкладкам, иначе — активная вкладка
+  const q = query.trim().toLowerCase();
+  const shown: MarketDef[] = useMemo(() => {
+    if (q) {
+      return MARKETS.filter(
+        (m) =>
+          m.label.toLowerCase().includes(q) ||
+          m.subtitle.toLowerCase().includes(q) ||
+          m.tab.toLowerCase().includes(q),
+      );
+    }
+    return MARKETS.filter((m) => m.tab === tab);
+  }, [q, tab]);
 
-  function toggle(market: string, value: string) {
+  function pick(market: string, value: string) {
+    const isNew = picks[market] === undefined;
+    if (isNew && Object.keys(picks).length >= MAX_PICKS) {
+      setMsg(`Максимум ${MAX_PICKS} котировки на матч — сними другую`);
+      return;
+    }
+    setMsg(null);
     setPicks((prev) => {
       const next = { ...prev };
       if (next[market] === value) delete next[market];
       else next[market] = value;
+      return next;
+    });
+  }
+
+  function setExact(v: string | null) {
+    const isNew = picks["exact_score"] === undefined;
+    if (v !== null && isNew && Object.keys(picks).length >= MAX_PICKS) {
+      setMsg(`Максимум ${MAX_PICKS} котировки на матч — сними другую`);
+      return;
+    }
+    setMsg(null);
+    setPicks((prev) => {
+      const next = { ...prev };
+      if (v === null) delete next["exact_score"];
+      else next["exact_score"] = v;
       return next;
     });
   }
@@ -52,7 +90,7 @@ export function PredictForm({
       setMsg("Выбери хотя бы один рынок");
       return;
     }
-    if (!confirm(`Сделать ставку (${arr.length})? Изменить её потом будет нельзя.`)) {
+    if (!forceOpen && !confirm(`Сделать ставку (${arr.length} рынк.)? Изменить её потом будет нельзя.`)) {
       return;
     }
     setSaving(true);
@@ -85,73 +123,71 @@ export function PredictForm({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <CountdownBadge ms={remaining} />
       <p className="text-xs text-muted text-center">{legend}</p>
       <p className="text-xs text-warn text-center">
-        ⚠️ Ставка одноразовая — после сохранения изменить нельзя.
+        {forceOpen
+          ? "🔓 Матч открыт админом — можно переставить выборы."
+          : "⚠️ Ставка одноразовая — после сохранения изменить нельзя."}
+      </p>
+      <p className="text-xs text-muted text-center">
+        Выбрано <span className="font-semibold text-foreground">{chosenCount}/{MAX_PICKS}</span> котировок · считаются отдельно (минуса за проигрыш нет)
       </p>
 
-      {MARKET_GROUPS.map((group) => (
-        <section key={group} className="space-y-2">
-          <h3 className="text-xs font-semibold text-muted uppercase tracking-wide">
-            {group}
-          </h3>
-          {MARKETS.filter((m) => m.group === group).map((m) =>
+      {/* Поиск */}
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="🔎 Поиск рынка (тотал, фора, 1-й тайм…)"
+        className="w-full bg-surface-2 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
+      />
+
+      {/* Вкладки */}
+      {!q && (
+        <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+          {MARKET_TABS.map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`shrink-0 px-3 py-1.5 rounded-lg text-sm transition ${
+                tab === t ? "bg-accent text-background font-semibold" : "bg-surface-2 text-muted"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Карточки рынков */}
+      <div className="space-y-2">
+        {shown.length === 0 ? (
+          <p className="text-sm text-muted text-center py-4">Ничего не найдено.</p>
+        ) : (
+          shown.map((m) =>
             m.key === "exact_score" ? (
-              <ExactScoreRow
+              <ExactScoreCard
                 key={m.key}
-                points={m.points}
                 value={picks[m.key] ?? null}
-                onChange={(v) =>
-                  setPicks((prev) => {
-                    const next = { ...prev };
-                    if (v === null) delete next[m.key];
-                    else next[m.key] = v;
-                    return next;
-                  })
-                }
+                points={m.points}
+                onChange={setExact}
               />
             ) : (
-              <div
-                key={m.key}
-                className="rounded-xl border border-border bg-surface p-2.5"
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-sm font-medium">{m.label}</span>
-                  <span className="text-[11px] text-accent-2">+{m.points}</span>
-                </div>
-                <div className="grid grid-flow-col auto-cols-fr gap-1.5">
-                  {m.options.map((o) => {
-                    const active = picks[m.key] === o.value;
-                    return (
-                      <button
-                        key={o.value}
-                        onClick={() => toggle(m.key, o.value)}
-                        className={`py-2 rounded-lg text-sm transition ${
-                          active
-                            ? "bg-accent/25 ring-1 ring-accent font-semibold"
-                            : "bg-surface-2 hover:bg-surface-2/70"
-                        }`}
-                      >
-                        {o.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              <MarketCard key={m.key} m={m} selected={picks[m.key] ?? null} onPick={pick} />
             ),
-          )}
-        </section>
-      ))}
+          )
+        )}
+      </div>
 
+      {/* Сохранить */}
       <div className="sticky bottom-16 sm:bottom-2 pt-1">
         <button
           onClick={save}
           disabled={saving}
           className="w-full bg-accent text-background font-semibold py-3 rounded-xl shadow-lg disabled:opacity-50"
         >
-          {saving ? "Сохраняю…" : `Сохранить прогноз (${chosenCount})`}
+          {saving ? "Сохраняю…" : `Сохранить прогноз (${chosenCount}/${MAX_PICKS})`}
         </button>
         {msg && <p className="text-center text-sm text-muted mt-1.5">{msg}</p>}
       </div>
@@ -159,26 +195,77 @@ export function PredictForm({
   );
 }
 
-function ExactScoreRow({
-  points,
+function MarketCard({
+  m,
+  selected,
+  onPick,
+}: {
+  m: MarketDef;
+  selected: string | null;
+  onPick: (market: string, value: string) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const cols = m.options.length <= 3 ? "grid-flow-col auto-cols-fr" : "grid-cols-2";
+  return (
+    <section className="rounded-xl border border-border bg-surface overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-3 py-2.5 text-left"
+      >
+        <span className="min-w-0">
+          <span className="text-sm font-medium block truncate">
+            {m.label}
+            {selected && <span className="text-accent"> ●</span>}
+          </span>
+          <span className="text-[11px] text-muted">{m.subtitle}</span>
+        </span>
+        <span className="flex items-center gap-2 shrink-0">
+          <span className="text-[11px] text-accent-2">+{m.points}</span>
+          <span className="text-muted text-xs">{open ? "▲" : "▼"}</span>
+        </span>
+      </button>
+      {open && (
+        <div className={`grid ${cols} gap-1.5 px-2.5 pb-2.5`}>
+          {m.options.map((o) => {
+            const active = selected === o.value;
+            return (
+              <button
+                key={o.value}
+                onClick={() => onPick(m.key, o.value)}
+                className={`py-2 px-1 rounded-lg text-xs leading-tight transition ${
+                  active
+                    ? "bg-accent/25 ring-1 ring-accent font-semibold"
+                    : "bg-surface-2 hover:bg-surface-2/70"
+                }`}
+              >
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ExactScoreCard({
   value,
+  points,
   onChange,
 }: {
-  points: number;
   value: string | null;
+  points: number;
   onChange: (v: string | null) => void;
 }) {
   const enabled = value !== null;
   const [h, a] = value ? value.split(":").map(Number) : [0, 0];
-
-  function set(nh: number, na: number) {
-    onChange(`${Math.max(0, nh)}:${Math.max(0, na)}`);
-  }
-
+  const set = (nh: number, na: number) => onChange(`${Math.max(0, nh)}:${Math.max(0, na)}`);
   return (
-    <div className="rounded-xl border border-border bg-surface p-2.5">
+    <section className="rounded-xl border border-border bg-surface p-2.5">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium">Точный счёт</span>
+        <span className="text-sm font-medium">
+          Точный счёт{value && <span className="text-accent"> ●</span>}
+        </span>
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-accent-2">+{points}</span>
           <button
@@ -198,7 +285,7 @@ function ExactScoreRow({
           <Stepper value={a} onChange={(v) => set(h, v)} />
         </div>
       )}
-    </div>
+    </section>
   );
 }
 

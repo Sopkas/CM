@@ -118,6 +118,8 @@ async function main() {
         const pts = scoreMarketPick(pick.market, pick.selection, {
           homeScore: m.homeScore!,
           awayScore: m.awayScore!,
+          htHome: null,
+          htAway: null,
           stats: null,
         });
         total += pts;

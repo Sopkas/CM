@@ -61,6 +61,8 @@ export async function recomputeAllPoints(): Promise<void> {
       pts = scoreMarketPick(p.market, p.selection, {
         homeScore: m.homeScore,
         awayScore: m.awayScore,
+        htHome: m.homeHt ?? null,
+        htAway: m.awayHt ?? null,
         stats: (m.stats as { home: Record<string, string>; away: Record<string, string> } | null) ?? null,
       });
     }

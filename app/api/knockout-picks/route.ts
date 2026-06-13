@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { isLocked } from "@/lib/deadline";
+import { isBracketLocked } from "@/lib/windows";
 
 const schema = z.object({
   matchId: z.string().min(1),
@@ -19,6 +20,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Неверные данные" }, { status: 400 });
   }
   const { matchId, predictedTeam } = parsed.data;
+
+  if (await isBracketLocked()) {
+    return NextResponse.json(
+      { error: "Сетка пока закрыта — откроется после группового этапа" },
+      { status: 423 },
+    );
+  }
 
   const match = await db.match.findUnique({ where: { id: matchId } });
   if (!match) return NextResponse.json({ error: "Матч не найден" }, { status: 404 });

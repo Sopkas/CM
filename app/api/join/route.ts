@@ -5,11 +5,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { setSession } from "@/lib/session";
+import { hashPin } from "@/lib/auth";
 
 const schema = z.object({
   code: z.string().min(1).max(200),
   nickname: z.string().trim().min(2).max(24),
   avatar: z.string().max(2000).optional(),
+  pin: z.string().regex(/^\d{4,6}$/),
 });
 
 export async function POST(req: NextRequest) {
@@ -23,11 +25,12 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Проверь ник (2–24 символа) и код" },
+      { error: "Проверь ник (2–24 символа), код и PIN (4–6 цифр)" },
       { status: 400 },
     );
   }
-  const { code, nickname, avatar } = parsed.data;
+  const { code, nickname, avatar, pin } = parsed.data;
+  const pinHash = hashPin(pin);
 
   const isAdminCode =
     !!process.env.ADMIN_INVITE_CODE && code === process.env.ADMIN_INVITE_CODE;
@@ -41,7 +44,7 @@ export async function POST(req: NextRequest) {
   // Админ-код — особый путь, не требует записи в invites.
   if (isAdminCode) {
     const user = await db.user.create({
-      data: { nickname, avatar, isAdmin: true },
+      data: { nickname, avatar, isAdmin: true, pinHash },
     });
     await setSession(user.id);
     return NextResponse.json({ ok: true, user: publicUser(user) });
@@ -57,7 +60,7 @@ export async function POST(req: NextRequest) {
   }
 
   const user = await db.$transaction(async (tx) => {
-    const u = await tx.user.create({ data: { nickname, avatar } });
+    const u = await tx.user.create({ data: { nickname, avatar, pinHash } });
     await tx.invite.update({
       where: { id: invite.id },
       data: { usedAt: new Date(), usedBy: u.id },

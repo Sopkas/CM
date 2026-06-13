@@ -26,6 +26,7 @@ model User {
   id         String   @id @default(cuid())
   nickname   String   @unique
   avatar     String? // emoji или URL картинки
+  pinHash    String? // PIN для повторного входа (scrypt salt:hash); null у старых аккаунтов
   isAdmin    Boolean  @default(false)
   totalPoints Int     @default(0)
   createdAt  DateTime @default(now())

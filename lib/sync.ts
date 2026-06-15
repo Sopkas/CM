@@ -11,7 +11,7 @@ import {
   fetchEspnMatchHt,
   fetchEspnMatchOdds,
 } from "@/lib/espn";
-import { americanToProb, devig } from "@/lib/odds";
+import { americanToProb, devig, buildModel, coefForPick } from "@/lib/odds";
 import { recomputeAllPoints } from "@/lib/recompute";
 
 // Кэфы для ближайших запланированных матчей (окно 72ч, ≤12 за прогон, рефреш ~2ч).
@@ -44,12 +44,30 @@ async function syncUpcomingOdds(): Promise<number> {
         data.pAway = dv.pAway;
         data.goalLine = o.goalLine;
         // де-виг over/under для калибровки μ
+        let pOver: number | undefined;
         if (o.overOdds != null && o.underOdds != null) {
-          const over = americanToProb(o.overOdds);
-          const under = americanToProb(o.underOdds);
-          data.pOver = over / (over + under || 1);
+          const ov = americanToProb(o.overOdds);
+          const un = americanToProb(o.underOdds);
+          pOver = ov / (ov + un || 1);
+          data.pOver = pOver;
         }
         n++;
+        await db.match.update({ where: { id: m.id }, data });
+
+        // backfill: проставить кэф уже сделанным ставкам этого (ещё не сыгранного)
+        // матча, у которых кэфа нет — чтобы все были на новой системе.
+        const noCoef = await db.marketPick.findMany({
+          where: { matchId: m.id, coef: null },
+          select: { id: true, market: true, selection: true },
+        });
+        if (noCoef.length > 0) {
+          const model = buildModel({ ...dv, goalLine: o.goalLine, pOver });
+          for (const pk of noCoef) {
+            const c = coefForPick(pk.market, pk.selection, model);
+            if (c != null) await db.marketPick.update({ where: { id: pk.id }, data: { coef: c } });
+          }
+        }
+        continue;
       }
       await db.match.update({ where: { id: m.id }, data });
     } catch {

@@ -6,10 +6,12 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { isLocked } from "@/lib/deadline";
 import { MARKET_BY_KEY } from "@/lib/markets";
+import { buildModel, coefForPick } from "@/lib/odds";
 
 const pickSchema = z.object({
   market: z.string().min(1),
   selection: z.string().min(1).max(40),
+  stake: z.number().int().min(1).max(3).default(1),
 });
 export const MAX_PICKS_PER_MATCH = 3;
 const schema = z.object({
@@ -50,18 +52,28 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Фиксируем кэф на сервере (клиенту не доверяем) из модели матча, если есть кэфы.
+  const model =
+    match.pHome != null && match.pDraw != null && match.pAway != null && match.goalLine != null
+      ? buildModel({
+          pHome: match.pHome, pDraw: match.pDraw, pAway: match.pAway,
+          goalLine: match.goalLine, pOver: match.pOver ?? undefined,
+        })
+      : null;
+  const rows = picks.map((p) => ({
+    userId: user.id,
+    matchId,
+    market: p.market,
+    selection: p.selection,
+    stake: p.stake,
+    coef: model ? coefForPick(p.market, p.selection, model) : null,
+  }));
+
   // Анлок: полная замена выборов (≤3), чтобы не накапливать сверх лимита.
   if (match.bettingOpen) {
     await db.$transaction([
       db.marketPick.deleteMany({ where: { userId: user.id, matchId } }),
-      db.marketPick.createMany({
-        data: picks.map((p) => ({
-          userId: user.id,
-          matchId,
-          market: p.market,
-          selection: p.selection,
-        })),
-      }),
+      db.marketPick.createMany({ data: rows }),
     ]);
     return NextResponse.json({ ok: true, saved: picks.length });
   }
@@ -74,15 +86,7 @@ export async function POST(req: NextRequest) {
         where: { userId: user.id, matchId },
       });
       if (existing > 0) throw new AlreadyBetError();
-      await tx.marketPick.createMany({
-        data: picks.map((p) => ({
-          userId: user.id,
-          matchId,
-          market: p.market,
-          selection: p.selection,
-        })),
-        skipDuplicates: true,
-      });
+      await tx.marketPick.createMany({ data: rows, skipDuplicates: true });
       return picks.length;
     });
     return NextResponse.json({ ok: true, saved });

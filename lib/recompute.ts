@@ -58,13 +58,19 @@ export async function recomputeAllPoints(): Promise<void> {
     const m = matchById.get(p.matchId);
     let pts = 0;
     if (m && m.status === "finished" && m.homeScore != null && m.awayScore != null) {
-      pts = scoreMarketPick(p.market, p.selection, {
-        homeScore: m.homeScore,
-        awayScore: m.awayScore,
-        htHome: m.homeHt ?? null,
-        htAway: m.awayHt ?? null,
-        stats: (m.stats as { home: Record<string, string>; away: Record<string, string> } | null) ?? null,
-      });
+      pts =
+        scoreMarketPick(
+          p.market,
+          p.selection,
+          {
+            homeScore: m.homeScore,
+            awayScore: m.awayScore,
+            htHome: m.homeHt ?? null,
+            htAway: m.awayHt ?? null,
+            stats: (m.stats as { home: Record<string, string>; away: Record<string, string> } | null) ?? null,
+          },
+          p.coef ?? null,
+        ) * (p.stake ?? 1);
     }
     add(p.userId, pts);
     if (pts !== p.pointsEarned) {

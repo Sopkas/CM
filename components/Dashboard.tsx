@@ -233,6 +233,30 @@ function Highlights({ data }: { data: DashboardData }) {
       </div>
 
       <div className="col-span-2 rounded-xl border border-border bg-surface p-3">
+        <div className="text-[10px] text-muted uppercase tracking-wide mb-1">
+          Эдж против закрытия (CLV) · скилл, а не везение
+        </div>
+        {data.edgePct == null ? (
+          <div className="text-sm text-muted">пока нет данных</div>
+        ) : (
+          <div className="flex items-baseline gap-2">
+            <span
+              className={`text-xl font-bold font-mono ${
+                data.edgePct > 0 ? "text-accent" : data.edgePct < 0 ? "text-danger" : ""
+              }`}
+            >
+              {data.edgePct > 0 ? "+" : ""}
+              {data.edgePct}%
+            </span>
+            <span className="text-xs text-muted">
+              {data.edgePct > 0 ? "берёшь лучше линии 🔥" : data.edgePct < 0 ? "хуже линии" : ""} ·{" "}
+              {data.edgeSamples} ст.
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="col-span-2 rounded-xl border border-border bg-surface p-3">
         <div className="text-[10px] text-muted uppercase tracking-wide mb-1.5">
           Выбор исхода (П1 / Х / П2)
         </div>

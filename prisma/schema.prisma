@@ -71,6 +71,12 @@ model Match {
   round      String?
   scoredAt   DateTime? // когда очки за матч были начислены
   bettingOpen Boolean  @default(false) // админ-анлок: ставки открыты несмотря на дедлайн
+  pHome      Float? // де-вигнутые вероятности 1X2 из кэфов ESPN
+  pDraw      Float?
+  pAway      Float?
+  goalLine   Float? // тотал-линия
+  pOver      Float? // де-вигнутая вероятность «больше» (калибровка μ)
+  oddsUpdatedAt DateTime?
   stats          Json? // статистика матча из ESPN: { home: {label:value}, away: {...} }
   statsUpdatedAt DateTime?
 
@@ -90,6 +96,8 @@ model MarketPick {
   matchId      String
   market       String // ключ рынка: 'outcome' | 'total_2_5' | 'exact_score' | ...
   selection    String // значение выбора: 'home' | 'over' | '2:1' | ...
+  coef         Float? // кэф, зафиксированный в момент ставки (null = фолбэк на static points)
+  stake        Int      @default(1) // размер ставки в юнитах (1–3)
   pointsEarned Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

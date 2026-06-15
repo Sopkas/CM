@@ -2,9 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MARKETS, MARKET_TABS, type MarketDef } from "@/lib/markets";
+import { MARKETS, MARKET_TABS, MARKET_BY_KEY, selectionLabel, winPoints, type MarketDef } from "@/lib/markets";
+import type { Pricing, PricedOption } from "@/lib/odds";
 
 const MAX_PICKS = 3; // не больше 3 котировок на матч
+const LOSS = 3; // проигрыш за юнит ставки
+const MAX_COEF = 1000;
+const MIN_COEF = 1.01;
+// кэф точного счёта из матрицы вероятностей (для динамического счёта-степпера)
+function coefOf(p: number): number {
+  return p <= 0 ? MAX_COEF : Math.min(MAX_COEF, Math.max(MIN_COEF, 1 / p));
+}
+// аккуратный показ кэфа: крупные — без копеек
+function fmtCoef(c: number): string {
+  return c >= 100 ? String(Math.round(c)) : c.toFixed(2);
+}
 
 interface Props {
   matchId: string;
@@ -13,6 +25,8 @@ interface Props {
   deadlineMs: number;
   initialPicks?: Record<string, string>;
   forceOpen?: boolean;
+  pricing?: Pricing | null; // кэфы по рынкам (из ESPN). null = фолбэк на static-очки
+  scoreMatrix?: number[][] | null; // матрица счёта для цены точного счёта
 }
 
 export function PredictForm({
@@ -22,9 +36,12 @@ export function PredictForm({
   deadlineMs,
   initialPicks,
   forceOpen = false,
+  pricing = null,
+  scoreMatrix = null,
 }: Props) {
   const router = useRouter();
   const [picks, setPicks] = useState<Record<string, string>>(initialPicks ?? {});
+  const [stakes, setStakes] = useState<Record<string, number>>({});
   const [tab, setTab] = useState<string>(MARKET_TABS[0]);
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
@@ -84,8 +101,20 @@ export function PredictForm({
     });
   }
 
+  function coefFor(market: string, selection: string): number | null {
+    if (market === "exact_score" && scoreMatrix) {
+      const [h, a] = selection.split(":").map(Number);
+      return scoreMatrix[h]?.[a] != null ? coefOf(scoreMatrix[h][a]) : null;
+    }
+    return pricing?.[market]?.[selection]?.coef ?? null;
+  }
+
   async function save() {
-    const arr = Object.entries(picks).map(([market, selection]) => ({ market, selection }));
+    const arr = Object.entries(picks).map(([market, selection]) => ({
+      market,
+      selection,
+      stake: stakes[market] ?? 1,
+    }));
     if (arr.length === 0) {
       setMsg("Выбери хотя бы один рынок");
       return;
@@ -132,7 +161,12 @@ export function PredictForm({
           : "⚠️ Ставка одноразовая — после сохранения изменить нельзя."}
       </p>
       <p className="text-xs text-muted text-center">
-        Выбрано <span className="font-semibold text-foreground">{chosenCount}/{MAX_PICKS}</span> котировок · считаются отдельно · <span className="text-warn">за неверный −очки</span>
+        Выбрано <span className="font-semibold text-foreground">{chosenCount}/{MAX_PICKS}</span> котировок ·{" "}
+        {pricing ? (
+          <>кэфы из букмекера · чем выше кэф — тем больше очков · проигрыш −3</>
+        ) : (
+          <span className="text-warn">за неверный −очки</span>
+        )}
       </p>
 
       {/* Поиск */}
@@ -171,14 +205,72 @@ export function PredictForm({
                 key={m.key}
                 value={picks[m.key] ?? null}
                 points={m.points}
+                scoreMatrix={scoreMatrix}
                 onChange={setExact}
               />
             ) : (
-              <MarketCard key={m.key} m={m} selected={picks[m.key] ?? null} onPick={pick} />
+              <MarketCard
+                key={m.key}
+                m={m}
+                selected={picks[m.key] ?? null}
+                priced={pricing?.[m.key] ?? null}
+                onPick={pick}
+              />
             ),
           )
         )}
       </div>
+
+      {/* Купон — выбранные котировки со ставкой 1–3 */}
+      {chosenCount > 0 && (
+        <section className="rounded-xl border border-accent/40 bg-surface p-3 space-y-2">
+          <div className="text-xs font-semibold text-muted">Купон ({chosenCount}/{MAX_PICKS})</div>
+          {Object.entries(picks).map(([market, selection]) => {
+            const def = MARKET_BY_KEY.get(market);
+            const coef = coefFor(market, selection);
+            const stake = stakes[market] ?? 1;
+            const win = coef != null ? winPoints(coef) * stake : null;
+            return (
+              <div key={market} className="flex items-center gap-2 text-xs">
+                <div className="flex-1 min-w-0">
+                  <div className="truncate">
+                    <span className="opacity-70">{def?.label ?? market}:</span>{" "}
+                    <span className="font-semibold">{selectionLabel(market, selection)}</span>
+                  </div>
+                  <div className="text-muted">
+                    {coef != null ? (
+                      <>кэф {coef >= 100 ? Math.round(coef) : coef.toFixed(2)} · выигрыш <span className="text-accent">+{win}</span> · риск <span className="text-danger">−{LOSS * stake}</span></>
+                    ) : (
+                      <>фолбэк-очки</>
+                    )}
+                  </div>
+                </div>
+                {/* ставка 1–3 */}
+                <div className="flex items-center gap-0.5 shrink-0">
+                  {[1, 2, 3].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setStakes((prev) => ({ ...prev, [market]: s }))}
+                      className={`w-7 h-7 rounded-lg text-xs font-bold ${
+                        stake === s ? "bg-accent text-background" : "bg-surface-2 text-muted"
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => pick(market, selection)}
+                    className="w-6 h-7 text-danger font-bold"
+                    title="убрать"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      )}
 
       {/* Сохранить */}
       <div className="sticky bottom-16 sm:bottom-2 pt-1">
@@ -198,10 +290,12 @@ export function PredictForm({
 function MarketCard({
   m,
   selected,
+  priced,
   onPick,
 }: {
   m: MarketDef;
   selected: string | null;
+  priced: Record<string, PricedOption> | null;
   onPick: (market: string, value: string) => void;
 }) {
   const [open, setOpen] = useState(true);
@@ -220,7 +314,7 @@ function MarketCard({
           <span className="text-[11px] text-muted">{m.subtitle}</span>
         </span>
         <span className="flex items-center gap-2 shrink-0">
-          <span className="text-[11px] text-accent-2">±{m.points}</span>
+          {!priced && <span className="text-[11px] text-accent-2">±{m.points}</span>}
           <span className="text-muted text-xs">{open ? "▲" : "▼"}</span>
         </span>
       </button>
@@ -228,17 +322,23 @@ function MarketCard({
         <div className={`grid ${cols} gap-1.5 px-2.5 pb-2.5`}>
           {m.options.map((o) => {
             const active = selected === o.value;
+            const pr = priced?.[o.value] ?? null;
             return (
               <button
                 key={o.value}
                 onClick={() => onPick(m.key, o.value)}
-                className={`py-2 px-1 rounded-lg text-xs leading-tight transition ${
+                className={`py-1.5 px-1 rounded-lg leading-tight transition flex flex-col items-center gap-0.5 ${
                   active
                     ? "bg-accent/25 ring-1 ring-accent font-semibold"
                     : "bg-surface-2 hover:bg-surface-2/70"
                 }`}
               >
-                {o.label}
+                <span className="text-xs">{o.label}</span>
+                {pr && (
+                  <span className="text-[10px] font-mono font-bold text-accent-2">
+                    {fmtCoef(pr.coef)} <span className="text-muted">·+{pr.pts}</span>
+                  </span>
+                )}
               </button>
             );
           })}
@@ -251,15 +351,19 @@ function MarketCard({
 function ExactScoreCard({
   value,
   points,
+  scoreMatrix,
   onChange,
 }: {
   value: string | null;
   points: number;
+  scoreMatrix: number[][] | null;
   onChange: (v: string | null) => void;
 }) {
   const enabled = value !== null;
   const [h, a] = value ? value.split(":").map(Number) : [0, 0];
   const set = (nh: number, na: number) => onChange(`${Math.max(0, nh)}:${Math.max(0, na)}`);
+  const coef =
+    scoreMatrix && enabled && scoreMatrix[h]?.[a] != null ? coefOf(scoreMatrix[h][a]) : null;
   return (
     <section className="rounded-xl border border-border bg-surface p-2.5">
       <div className="flex items-center justify-between mb-2">
@@ -267,7 +371,13 @@ function ExactScoreCard({
           Точный счёт{value && <span className="text-accent"> ●</span>}
         </span>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-accent-2">±{points}</span>
+          {coef ? (
+            <span className="text-[11px] font-mono font-bold text-accent-2">
+              {fmtCoef(coef)} → +{winPoints(coef)}
+            </span>
+          ) : (
+            <span className="text-[11px] text-accent-2">±{points}</span>
+          )}
           <button
             onClick={() => onChange(enabled ? null : "0:0")}
             className={`text-xs px-2 py-0.5 rounded ${

@@ -17,6 +17,12 @@ export interface ResultContext {
   stats: { home: Record<string, string>; away: Record<string, string> } | null;
 }
 
+// Цена стат-рынков (ESPN их не котирует) — считаем из средних μ по Пуассону.
+export type StatPricing =
+  | { kind: "ou"; mu: number; line: number } // тотал больше/меньше
+  | { kind: "winner" } // у кого больше (home/away/equal)
+  | { kind: "binary"; pYes: number }; // да/нет с фикс-вероятностью
+
 export interface MarketDef {
   key: string;
   label: string;
@@ -25,6 +31,7 @@ export interface MarketDef {
   points: number;
   options: MarketOption[];
   needsStats?: boolean;
+  statPricing?: StatPricing; // как ценить, если рынок не выводится из счёта голов
   evaluate: (selection: string, ctx: ResultContext) => boolean | null;
 }
 
@@ -559,6 +566,7 @@ const mStatTotal = (
   tab: string,
   espnLabel: string,
   line: number,
+  mu: number,
   points = 2,
 ): MarketDef => ({
   key,
@@ -568,6 +576,7 @@ const mStatTotal = (
   points,
   options: OU,
   needsStats: true,
+  statPricing: { kind: "ou", mu, line },
   evaluate: (sel, c) => {
     const t = statTotal(c, espnLabel);
     return t == null ? null : evalTotalDir(sel, t, line);
@@ -591,6 +600,7 @@ const mStatWinner = (
     { value: "equal", label: "Поровну" },
   ],
   needsStats: true,
+  statPricing: { kind: "winner" },
   evaluate: (sel, c) => {
     if (!c.stats) return null;
     const h = parseFloat(c.stats.home[espnLabel] ?? "");
@@ -687,25 +697,25 @@ export const MARKETS: MarketDef[] = [
   mOutcomeOrTotal(),
   mOutcomeOrBtts(),
 
-  // Статистика — Удары
-  mStatTotal("total_shots_total", "Тотал ударов", "Удары", "SHOTS", 24.5),
-  mStatTotal("shots_20_5", "Тотал ударов", "Удары", "SHOTS", 20.5),
-  mStatTotal("shots_28_5", "Тотал ударов", "Удары", "SHOTS", 28.5),
-  mStatTotal("shots_on_target_total", "Тотал ударов в створ", "Удары", "ON GOAL", 7.5),
-  mStatTotal("shots_on_target_9_5", "Тотал ударов в створ", "Удары", "ON GOAL", 9.5),
+  // Статистика — Удары (μ — средние по матчу)
+  mStatTotal("total_shots_total", "Тотал ударов", "Удары", "SHOTS", 24.5, 25),
+  mStatTotal("shots_20_5", "Тотал ударов", "Удары", "SHOTS", 20.5, 25),
+  mStatTotal("shots_28_5", "Тотал ударов", "Удары", "SHOTS", 28.5, 25),
+  mStatTotal("shots_on_target_total", "Тотал ударов в створ", "Удары", "ON GOAL", 7.5, 8.5),
+  mStatTotal("shots_on_target_9_5", "Тотал ударов в створ", "Удары", "ON GOAL", 9.5, 8.5),
   mStatWinner("shots_winner", "Больше ударов", "Удары", "SHOTS"),
 
   // Угловые
-  mStatTotal("corners_8_5", "Тотал угловых", "Угловые", "Corner Kicks", 8.5),
-  mStatTotal("corners_total", "Тотал угловых", "Угловые", "Corner Kicks", 9.5),
-  mStatTotal("corners_10_5", "Тотал угловых", "Угловые", "Corner Kicks", 10.5),
-  mStatTotal("corners_11_5", "Тотал угловых", "Угловые", "Corner Kicks", 11.5),
+  mStatTotal("corners_8_5", "Тотал угловых", "Угловые", "Corner Kicks", 8.5, 10.5),
+  mStatTotal("corners_total", "Тотал угловых", "Угловые", "Corner Kicks", 9.5, 10.5),
+  mStatTotal("corners_10_5", "Тотал угловых", "Угловые", "Corner Kicks", 10.5, 10.5),
+  mStatTotal("corners_11_5", "Тотал угловых", "Угловые", "Corner Kicks", 11.5, 10.5),
   mStatWinner("corners_winner", "Больше угловых", "Угловые", "Corner Kicks"),
 
   // Карточки
-  mStatTotal("yellow_2_5", "Тотал жёлтых", "Карточки", "Yellow Cards", 2.5),
-  mStatTotal("yellow_total", "Тотал жёлтых", "Карточки", "Yellow Cards", 3.5),
-  mStatTotal("yellow_4_5", "Тотал жёлтых", "Карточки", "Yellow Cards", 4.5),
+  mStatTotal("yellow_2_5", "Тотал жёлтых", "Карточки", "Yellow Cards", 2.5, 3.8),
+  mStatTotal("yellow_total", "Тотал жёлтых", "Карточки", "Yellow Cards", 3.5, 3.8),
+  mStatTotal("yellow_4_5", "Тотал жёлтых", "Карточки", "Yellow Cards", 4.5, 3.8),
   {
     key: "red_card",
     label: "Будет красная карточка",
@@ -714,6 +724,7 @@ export const MARKETS: MarketDef[] = [
     points: 3,
     options: YN,
     needsStats: true,
+    statPricing: { kind: "binary", pYes: 0.22 },
     evaluate: (sel, c) => {
       const t = statTotal(c, "Red Cards");
       if (t == null) return null;
@@ -724,11 +735,11 @@ export const MARKETS: MarketDef[] = [
   },
 
   // Прочая стата
-  mStatTotal("fouls_19_5", "Тотал фолов", "Прочее", "Fouls", 19.5),
-  mStatTotal("fouls_22_5", "Тотал фолов", "Прочее", "Fouls", 22.5),
-  mStatTotal("offsides_2_5", "Тотал офсайдов", "Прочее", "Offsides", 2.5),
-  mStatTotal("offsides_3_5", "Тотал офсайдов", "Прочее", "Offsides", 3.5),
-  mStatTotal("saves_total_6_5", "Тотал сейвов", "Прочее", "Saves", 6.5),
+  mStatTotal("fouls_19_5", "Тотал фолов", "Прочее", "Fouls", 19.5, 22),
+  mStatTotal("fouls_22_5", "Тотал фолов", "Прочее", "Fouls", 22.5, 22),
+  mStatTotal("offsides_2_5", "Тотал офсайдов", "Прочее", "Offsides", 2.5, 3.2),
+  mStatTotal("offsides_3_5", "Тотал офсайдов", "Прочее", "Offsides", 3.5, 3.2),
+  mStatTotal("saves_total_6_5", "Тотал сейвов", "Прочее", "Saves", 6.5, 6),
   mStatWinner("possession_winner", "Чьё владение больше", "Прочее", "Possession"),
 ];
 
@@ -738,19 +749,30 @@ export const MARKET_BY_KEY = new Map(MARKETS.map((m) => [m.key, m]));
 const TAB_ORDER = ["Исход", "Тотал", "Фора", "Голы", "Счёт", "Тайм/матч", "Экспресс", "Удары", "Угловые", "Карточки", "Прочее"];
 export const MARKET_TABS = TAB_ORDER.filter((t) => MARKETS.some((m) => m.tab === t));
 
-// Очки за выбор: угадал = +points, не угадал = −points,
-// не определить (нет статы/счёта таймов) = 0 (без штрафа).
+// Логарифмическая выплата: выигрыш = round(WIN_K × ln(кэф)), проигрыш = −LOSS.
+// Так лонгшоты различаются (0:2 > 0:1 > 2:0), но без диких чисел; фаворит-проходняк ≈ 0.
+export const WIN_K = 4;
+export const LOSS = 3;
+export function winPoints(coef: number): number {
+  return Math.max(0, Math.round(WIN_K * Math.log(coef)));
+}
+
+// Очки за выбор.
+//  - coef задан (рынок котировался) → по кэфу: угадал +winPoints, мимо −LOSS.
+//  - coef нет (стат-рынки / матч без кэфов) → фолбэк: ±static points.
+//  - не определить (нет данных) → 0.
 export function scoreMarketPick(
   marketKey: string,
   selection: string,
   ctx: ResultContext,
+  coef: number | null = null,
 ): number {
   const def = MARKET_BY_KEY.get(marketKey);
   if (!def) return 0;
   const r = def.evaluate(selection, ctx);
-  if (r === true) return def.points;
-  if (r === false) return -def.points;
-  return 0;
+  if (r === null) return 0;
+  if (coef != null) return r ? winPoints(coef) : -LOSS;
+  return r ? def.points : -def.points;
 }
 
 // Человекочитаемая подпись выбора (для списков прогнозов).

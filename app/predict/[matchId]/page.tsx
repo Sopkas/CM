@@ -13,6 +13,7 @@ import { RecentForm } from "@/components/RecentForm";
 import { Lineups } from "@/components/Lineups";
 import { Flag } from "@/components/Flag";
 import { fetchEspnMatchExtras, type MatchStats, type MatchExtras } from "@/lib/espn";
+import { buildModel, priceAll } from "@/lib/odds";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,16 @@ export default async function PredictPage({
 
   const locked = isLocked(match.matchDate);
   const showScore = match.status === "live" || match.status === "finished";
+
+  // Цены рынков из кэфов (если ESPN их прислал). Иначе форма покажет фолбэк-очки.
+  const oddsModel =
+    match.pHome != null && match.pDraw != null && match.pAway != null && match.goalLine != null
+      ? buildModel({
+          pHome: match.pHome, pDraw: match.pDraw, pAway: match.pAway,
+          goalLine: match.goalLine, pOver: match.pOver ?? undefined,
+        })
+      : null;
+  const priced = oddsModel ? priceAll(oddsModel) : null;
 
   const myPicks = user
     ? await db.marketPick.findMany({ where: { userId: user.id, matchId } })
@@ -144,6 +155,8 @@ export default async function PredictPage({
             deadlineMs={deadlineFor(match.matchDate).getTime()}
             initialPicks={initialPicks}
             forceOpen
+            pricing={priced?.pricing ?? null}
+            scoreMatrix={priced?.scoreMatrix ?? null}
           />
         </>
       ) : locked || hasBet ? (
@@ -158,6 +171,8 @@ export default async function PredictPage({
           homeTeam={match.homeTeam}
           awayTeam={match.awayTeam}
           deadlineMs={deadlineFor(match.matchDate).getTime()}
+          pricing={priced?.pricing ?? null}
+          scoreMatrix={priced?.scoreMatrix ?? null}
         />
       )}
 

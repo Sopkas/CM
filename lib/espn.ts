@@ -234,6 +234,36 @@ export async function fetchEspnMatchStats(eventId: string): Promise<MatchStats |
   return result;
 }
 
+// Кэфы матча из summary (odds[0], провайдер DraftKings/др.): мани-лайн 1X2 + тотал.
+export async function fetchEspnMatchOdds(eventId: string): Promise<{
+  homeMl: number;
+  drawMl: number;
+  awayMl: number;
+  goalLine: number;
+  overOdds?: number;
+  underOdds?: number;
+} | null> {
+  const id = eventId.replace(/^espn:/, "");
+  const data = (await getJson(`${BASE}/summary?event=${id}`)) as {
+    odds?: {
+      overUnder?: number;
+      overOdds?: number;
+      underOdds?: number;
+      homeTeamOdds?: { moneyLine?: number };
+      awayTeamOdds?: { moneyLine?: number };
+      drawOdds?: { moneyLine?: number };
+    }[];
+  };
+  const o = data.odds?.[0];
+  if (!o) return null;
+  const homeMl = o.homeTeamOdds?.moneyLine;
+  const awayMl = o.awayTeamOdds?.moneyLine;
+  const drawMl = o.drawOdds?.moneyLine;
+  const goalLine = o.overUnder;
+  if (homeMl == null || awayMl == null || drawMl == null || goalLine == null) return null;
+  return { homeMl, drawMl, awayMl, goalLine, overOdds: o.overOdds, underOdds: o.underOdds };
+}
+
 // Счёт 1-го тайма из summary (header.competitors[].linescores[0]).
 export async function fetchEspnMatchHt(
   eventId: string,

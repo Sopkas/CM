@@ -9,8 +9,55 @@ import {
   fetchTodayEspnMatches,
   fetchEspnMatchStats,
   fetchEspnMatchHt,
+  fetchEspnMatchOdds,
 } from "@/lib/espn";
+import { americanToProb, devig } from "@/lib/odds";
 import { recomputeAllPoints } from "@/lib/recompute";
+
+// Кэфы для ближайших запланированных матчей (окно 72ч, ≤12 за прогон, рефреш ~2ч).
+async function syncUpcomingOdds(): Promise<number> {
+  const now = Date.now();
+  const soon = new Date(now + 72 * 3600_000);
+  const matches = await db.match.findMany({
+    where: {
+      status: "scheduled",
+      matchDate: { lte: soon, gte: new Date(now - 3600_000) },
+      externalId: { startsWith: "espn:" },
+    },
+    orderBy: { matchDate: "asc" },
+  });
+  let n = 0;
+  for (const m of matches) {
+    if (n >= 12) break;
+    if (m.oddsUpdatedAt && now - m.oddsUpdatedAt.getTime() < 2 * 3600_000) continue;
+    try {
+      const o = await fetchEspnMatchOdds(m.externalId);
+      const data: Record<string, unknown> = { oddsUpdatedAt: new Date() };
+      if (o) {
+        const dv = devig(
+          americanToProb(o.homeMl),
+          americanToProb(o.drawMl),
+          americanToProb(o.awayMl),
+        );
+        data.pHome = dv.pHome;
+        data.pDraw = dv.pDraw;
+        data.pAway = dv.pAway;
+        data.goalLine = o.goalLine;
+        // де-виг over/under для калибровки μ
+        if (o.overOdds != null && o.underOdds != null) {
+          const over = americanToProb(o.overOdds);
+          const under = americanToProb(o.underOdds);
+          data.pOver = over / (over + under || 1);
+        }
+        n++;
+      }
+      await db.match.update({ where: { id: m.id }, data });
+    } catch {
+      // пропускаем сбойный матч
+    }
+  }
+  return n;
+}
 
 export interface SyncResult {
   source: "espn" | "worldcup2026";
@@ -94,6 +141,7 @@ export async function runSync(): Promise<SyncResult> {
     .map((m) => m.externalId);
   const statsUpdated = useWorldcup ? 0 : await pullStats(needStats);
 
+  await syncUpcomingOdds().catch(() => 0);
   await recomputeAllPoints();
   return {
     source: useWorldcup ? "worldcup2026" : "espn",

@@ -1,5 +1,6 @@
 // Разбивка очков пользователя по источникам (для профиля и сравнения).
 import { db } from "@/lib/db";
+import { buildModel, coefForPick } from "@/lib/odds";
 
 export interface MatchPickSummary {
   count: number;
@@ -111,6 +112,8 @@ export interface Dashboard {
   bestMatch: { homeTeam: string; awayTeam: string; points: number } | null;
   outcomeBias: { home: number; draw: number; away: number };
   favoriteMarket: string | null;
+  edgePct: number | null; // CLV: средний эдж против закрывающей линии, %
+  edgeSamples: number; // на скольких ставках посчитан
 }
 
 export async function getDashboard(userId: string): Promise<Dashboard | null> {
@@ -123,10 +126,14 @@ export async function getDashboard(userId: string): Promise<Dashboard | null> {
       select: {
         market: true,
         selection: true,
+        coef: true,
         pointsEarned: true,
         matchId: true,
         match: {
-          select: { status: true, homeTeam: true, awayTeam: true, matchDate: true },
+          select: {
+            status: true, homeTeam: true, awayTeam: true, matchDate: true,
+            pHome: true, pDraw: true, pAway: true, goalLine: true, pOver: true,
+          },
         },
       },
     }),
@@ -200,6 +207,21 @@ export async function getDashboard(userId: string): Promise<Dashboard | null> {
   const picksPlayed = resolved.length;
   const picksCorrect = resolved.filter((p) => p.pointsEarned > 0).length;
 
+  // CLV / эдж: кэф игрока против закрывающей линии (текущая модель матча = закрытие).
+  let edgeSum = 0;
+  let edgeSamples = 0;
+  for (const p of picks) {
+    const mm = p.match;
+    if (p.coef == null || mm.pHome == null || mm.pDraw == null || mm.pAway == null || mm.goalLine == null) continue;
+    const closing = coefForPick(p.market, p.selection, buildModel({
+      pHome: mm.pHome, pDraw: mm.pDraw, pAway: mm.pAway, goalLine: mm.goalLine, pOver: mm.pOver ?? undefined,
+    }));
+    if (closing == null || closing <= 0) continue;
+    edgeSum += p.coef / closing - 1;
+    edgeSamples++;
+  }
+  const edgePct = edgeSamples > 0 ? Math.round((edgeSum / edgeSamples) * 1000) / 10 : null;
+
   return {
     user: {
       id: user.id,
@@ -224,5 +246,7 @@ export async function getDashboard(userId: string): Promise<Dashboard | null> {
       : null,
     outcomeBias,
     favoriteMarket,
+    edgePct,
+    edgeSamples,
   };
 }

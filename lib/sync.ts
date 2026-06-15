@@ -44,34 +44,45 @@ async function syncUpcomingOdds(): Promise<number> {
         data.pAway = dv.pAway;
         data.goalLine = o.goalLine;
         // де-виг over/under для калибровки μ
-        let pOver: number | undefined;
         if (o.overOdds != null && o.underOdds != null) {
-          const ov = americanToProb(o.overOdds);
-          const un = americanToProb(o.underOdds);
-          pOver = ov / (ov + un || 1);
-          data.pOver = pOver;
+          const over = americanToProb(o.overOdds);
+          const under = americanToProb(o.underOdds);
+          data.pOver = over / (over + under || 1);
         }
         n++;
-        await db.match.update({ where: { id: m.id }, data });
-
-        // backfill: проставить кэф уже сделанным ставкам этого (ещё не сыгранного)
-        // матча, у которых кэфа нет — чтобы все были на новой системе.
-        const noCoef = await db.marketPick.findMany({
-          where: { matchId: m.id, coef: null },
-          select: { id: true, market: true, selection: true },
-        });
-        if (noCoef.length > 0) {
-          const model = buildModel({ ...dv, goalLine: o.goalLine, pOver });
-          for (const pk of noCoef) {
-            const c = coefForPick(pk.market, pk.selection, model);
-            if (c != null) await db.marketPick.update({ where: { id: pk.id }, data: { coef: c } });
-          }
-        }
-        continue;
       }
       await db.match.update({ where: { id: m.id }, data });
     } catch {
       // пропускаем сбойный матч
+    }
+  }
+  return n;
+}
+
+// Backfill: проставить кэф уже сделанным ставкам несыгранных матчей, у которых
+// кэфы уже подтянулись, а у ставки coef ещё нет. Независимо от троттлинга кэфов.
+async function backfillCoefs(): Promise<number> {
+  const picks = await db.marketPick.findMany({
+    where: { coef: null, match: { status: "scheduled", pHome: { not: null } } },
+    select: {
+      id: true,
+      market: true,
+      selection: true,
+      match: { select: { pHome: true, pDraw: true, pAway: true, goalLine: true, pOver: true } },
+    },
+  });
+  let n = 0;
+  for (const pk of picks) {
+    const mm = pk.match;
+    if (mm.pHome == null || mm.pDraw == null || mm.pAway == null || mm.goalLine == null) continue;
+    const model = buildModel({
+      pHome: mm.pHome, pDraw: mm.pDraw, pAway: mm.pAway,
+      goalLine: mm.goalLine, pOver: mm.pOver ?? undefined,
+    });
+    const c = coefForPick(pk.market, pk.selection, model);
+    if (c != null) {
+      await db.marketPick.update({ where: { id: pk.id }, data: { coef: c } });
+      n++;
     }
   }
   return n;
@@ -160,6 +171,7 @@ export async function runSync(): Promise<SyncResult> {
   const statsUpdated = useWorldcup ? 0 : await pullStats(needStats);
 
   await syncUpcomingOdds().catch(() => 0);
+  await backfillCoefs().catch(() => 0);
   await recomputeAllPoints();
   return {
     source: useWorldcup ? "worldcup2026" : "espn",

@@ -154,8 +154,19 @@ export function priceProb(
   const def = MARKET_BY_KEY.get(marketKey);
   if (!def) return null;
 
-  // 0) стат-рынки (ESPN не котирует) — по Пуассону из μ
-  if (def.statPricing) return priceStat(def.statPricing, selection);
+  // 0) стат-рынки (ESPN не котирует) — по Пуассону / силе команд
+  if (def.statPricing) {
+    // «у кого больше» (владение/удары/угловые) — по силе команд, а не 43/43.
+    if (def.statPricing.kind === "winner") {
+      const op = outcomeProbs(matrix(model.lambdaHome, model.lambdaAway, FT_MAX));
+      const EQ = 0.12; // шанс «поровну»
+      if (selection === "home") return (1 - EQ) * (op.home + 0.5 * op.draw);
+      if (selection === "away") return (1 - EQ) * (op.away + 0.5 * op.draw);
+      if (selection === "equal") return EQ;
+      return null;
+    }
+    return priceStat(def.statPricing, selection);
+  }
 
   // 1) финальный счёт
   const ft = matrix(model.lambdaHome, model.lambdaAway, FT_MAX);

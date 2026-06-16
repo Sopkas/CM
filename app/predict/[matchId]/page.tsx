@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { deadlineFor, isLocked } from "@/lib/deadline";
 import { formatMatchDate, stageLabel, statusLabel } from "@/lib/format";
-import { selectionLabel, MARKET_BY_KEY } from "@/lib/markets";
+import { selectionLabel, MARKET_BY_KEY, OBVIOUS_COEF } from "@/lib/markets";
 import { PredictForm } from "@/components/PredictForm";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { Avatar } from "@/components/Avatar";
@@ -49,6 +49,23 @@ export default async function PredictPage({
         })
       : null;
   const priced = oddsModel ? priceAll(oddsModel) : null;
+
+  // Правило Путинцева: предупреждаем, только если юзер под правилом.
+  // risk = предыдущий (по дате) bet-матч содержал очевидную ставку (кэф < OBVIOUS_COEF).
+  let putintsevaRisk = false;
+  if (user?.putintseva) {
+    const prevMatch = await db.marketPick.findFirst({
+      where: { userId: user.id, match: { matchDate: { lt: match.matchDate } } },
+      orderBy: { match: { matchDate: "desc" } },
+      select: { matchId: true },
+    });
+    if (prevMatch) {
+      const obv = await db.marketPick.count({
+        where: { userId: user.id, matchId: prevMatch.matchId, coef: { lt: OBVIOUS_COEF } },
+      });
+      putintsevaRisk = obv > 0;
+    }
+  }
 
   const myPicks = user
     ? await db.marketPick.findMany({ where: { userId: user.id, matchId } })
@@ -157,6 +174,8 @@ export default async function PredictPage({
             forceOpen
             pricing={priced?.pricing ?? null}
             scoreMatrix={priced?.scoreMatrix ?? null}
+            putintsevaFlag={!!user?.putintseva}
+            putintsevaRisk={putintsevaRisk}
           />
         </>
       ) : locked || hasBet ? (
@@ -173,6 +192,8 @@ export default async function PredictPage({
           deadlineMs={deadlineFor(match.matchDate).getTime()}
           pricing={priced?.pricing ?? null}
           scoreMatrix={priced?.scoreMatrix ?? null}
+          putintsevaFlag={!!user?.putintseva}
+          putintsevaRisk={putintsevaRisk}
         />
       )}
 

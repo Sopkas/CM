@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MARKETS, MARKET_TABS, MARKET_BY_KEY, selectionLabel, winPoints, type MarketDef } from "@/lib/markets";
+import { MARKETS, MARKET_TABS, MARKET_BY_KEY, selectionLabel, winPoints, OBVIOUS_COEF, type MarketDef } from "@/lib/markets";
 import type { Pricing, PricedOption } from "@/lib/odds";
 
 const MAX_PICKS = 3; // не больше 3 котировок на матч
@@ -27,6 +27,8 @@ interface Props {
   forceOpen?: boolean;
   pricing?: Pricing | null; // кэфы по рынкам (из ESPN). null = фолбэк на static-очки
   scoreMatrix?: number[][] | null; // матрица счёта для цены точного счёта
+  putintsevaFlag?: boolean; // юзер под правилом Путинцева
+  putintsevaRisk?: boolean; // предыдущий bet-матч был очевидным → этот купон под угрозой
 }
 
 export function PredictForm({
@@ -38,6 +40,8 @@ export function PredictForm({
   forceOpen = false,
   pricing = null,
   scoreMatrix = null,
+  putintsevaFlag = false,
+  putintsevaRisk = false,
 }: Props) {
   const router = useRouter();
   const [picks, setPicks] = useState<Record<string, string>>(initialPicks ?? {});
@@ -168,6 +172,19 @@ export function PredictForm({
           <span className="text-warn">за неверный −очки</span>
         )}
       </p>
+
+      {/* Правило Путинцева — только для отмеченных */}
+      {putintsevaFlag &&
+        Object.entries(picks).some(([m, s]) => {
+          const c = coefFor(m, s);
+          return c != null && c < OBVIOUS_COEF;
+        }) && (
+          <div className="rounded-lg bg-danger/15 text-danger text-xs text-center py-2 px-2 font-semibold">
+            {putintsevaRisk
+              ? "🎯 ПРАВИЛО ПУТИНЦЕВА: в прошлый раз ты ставил очевидное — за ЭТОТ купон 0 на плюс (минусы останутся)!"
+              : "⚠️ Осторожно, ты можешь нарушить правило Путинцева — это очевидная ставка (низкий кэф). Поставишь очевидное и в следующий раз — купон обнулит плюс."}
+          </div>
+        )}
 
       {/* Поиск */}
       <input

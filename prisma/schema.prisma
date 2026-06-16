@@ -28,6 +28,7 @@ model User {
   avatar     String? // emoji или URL картинки
   pinHash    String? // PIN для повторного входа (scrypt salt:hash); null у старых аккаунтов
   isAdmin    Boolean  @default(false)
+  putintseva Boolean  @default(false) // под «правилом Путинцева» (наказание за очевидные ставки)
   totalPoints Int     @default(0)
   createdAt  DateTime @default(now())
 

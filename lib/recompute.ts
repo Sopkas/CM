@@ -10,7 +10,7 @@ import {
   matchWinner,
   SCORING,
 } from "@/lib/scoring";
-import { scoreMarketPick } from "@/lib/markets";
+import { scoreMarketPick, OBVIOUS_COEF } from "@/lib/markets";
 import { computeGroupTable } from "@/lib/standings";
 
 const SETTINGS = {
@@ -32,7 +32,7 @@ export async function setSetting(key: string, value: string): Promise<void> {
 }
 
 export async function recomputeAllPoints(): Promise<void> {
-  const [matches, marketPicks, groupPicks, knockoutPicks, bonusPicks, settings] =
+  const [matches, marketPicks, groupPicks, knockoutPicks, bonusPicks, settings, flaggedUsers] =
     await Promise.all([
       db.match.findMany(),
       db.marketPick.findMany(),
@@ -40,7 +40,9 @@ export async function recomputeAllPoints(): Promise<void> {
       db.knockoutPick.findMany(),
       db.bonusPrediction.findMany(),
       db.setting.findMany(),
+      db.user.findMany({ where: { putintseva: true }, select: { id: true } }),
     ]);
+  const flagged = new Set(flaggedUsers.map((u) => u.id));
 
   const matchById = new Map(matches.map((m) => [m.id, m]));
   const settingMap = new Map(settings.map((s) => [s.key, s.value]));
@@ -52,13 +54,20 @@ export async function recomputeAllPoints(): Promise<void> {
   const add = (userId: string, pts: number) =>
     totals.set(userId, (totals.get(userId) ?? 0) + pts);
 
-  // 1) Прогнозы на матчи по рынкам
+  // 1) Прогнозы на матчи по рынкам (+ правило Путинцева для отмеченных)
   const pickUpdates: { id: string; pointsEarned: number }[] = [];
+  const rows: {
+    id: string; userId: string; matchId: string; date: number;
+    obvious: boolean; raw: number; prev: number;
+  }[] = [];
+  // userId -> matchId -> { date, обнаружена ли очевидная ставка }
+  const userMatch = new Map<string, Map<string, { date: number; obvious: boolean }>>();
+
   for (const p of marketPicks) {
     const m = matchById.get(p.matchId);
-    let pts = 0;
+    let raw = 0;
     if (m && m.status === "finished" && m.homeScore != null && m.awayScore != null) {
-      pts =
+      raw =
         scoreMarketPick(
           p.market,
           p.selection,
@@ -72,10 +81,37 @@ export async function recomputeAllPoints(): Promise<void> {
           p.coef ?? null,
         ) * (p.stake ?? 1);
     }
-    add(p.userId, pts);
-    if (pts !== p.pointsEarned) {
-      pickUpdates.push({ id: p.id, pointsEarned: pts });
+    const obvious = p.coef != null && p.coef < OBVIOUS_COEF;
+    const date = m?.matchDate.getTime() ?? 0;
+    rows.push({ id: p.id, userId: p.userId, matchId: p.matchId, date, obvious, raw, prev: p.pointsEarned });
+    if (flagged.has(p.userId)) {
+      let um = userMatch.get(p.userId);
+      if (!um) { um = new Map(); userMatch.set(p.userId, um); }
+      const cur = um.get(p.matchId) ?? { date, obvious: false };
+      cur.obvious = cur.obvious || obvious;
+      um.set(p.matchId, cur);
     }
+  }
+
+  // Наказанные матчи: очевидная ставка, когда и на предыдущем (по дате) bet-матче была очевидная.
+  const punished = new Set<string>(); // `${userId}:${matchId}`
+  for (const [userId, um] of userMatch) {
+    const sorted = [...um.entries()].sort((a, b) => a[1].date - b[1].date);
+    let prevObvious = false;
+    for (const [matchId, info] of sorted) {
+      if (info.obvious && prevObvious) punished.add(`${userId}:${matchId}`);
+      prevObvious = info.obvious;
+    }
+  }
+
+  for (const r of rows) {
+    // у отмеченных на наказанном матче плюс обнуляется, минус остаётся.
+    const pts =
+      flagged.has(r.userId) && punished.has(`${r.userId}:${r.matchId}`)
+        ? Math.min(0, r.raw)
+        : r.raw;
+    add(r.userId, pts);
+    if (pts !== r.prev) pickUpdates.push({ id: r.id, pointsEarned: pts });
   }
 
   // 2) Выход из групп

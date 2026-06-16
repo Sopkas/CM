@@ -11,7 +11,7 @@ export default async function AdminPage() {
   if (!user) redirect("/join");
   if (!user.isAdmin) redirect("/");
 
-  const [invites, matches, champion, topScorer, predictionsOpenUntil, bracketLockedRaw, picks] =
+  const [invites, matches, champion, topScorer, predictionsOpenUntil, bracketLockedRaw, picks, allUsers] =
     await Promise.all([
       db.invite.findMany({ orderBy: { createdAt: "desc" } }),
       db.match.findMany({ orderBy: { matchDate: "asc" } }),
@@ -25,6 +25,10 @@ export default async function AdminPage() {
           match: { select: { homeTeam: true, awayTeam: true, status: true, matchDate: true } },
         },
         orderBy: { match: { matchDate: "asc" } },
+      }),
+      db.user.findMany({
+        select: { id: true, nickname: true, putintseva: true },
+        orderBy: { nickname: "asc" },
       }),
     ]);
 
@@ -61,6 +65,7 @@ export default async function AdminPage() {
         selection: p.selection,
         points: p.pointsEarned,
       }))}
+      users={allUsers}
     />
   );
 }

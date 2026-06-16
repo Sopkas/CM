@@ -753,6 +753,8 @@ export const MARKET_TABS = TAB_ORDER.filter((t) => MARKETS.some((m) => m.tab ===
 // Так лонгшоты различаются (0:2 > 0:1 > 2:0), но без диких чисел; фаворит-проходняк ≈ 0.
 export const WIN_K = 4;
 export const LOSS = 3;
+// Правило Путинцева: пик с кэфом ниже этого — «очевидная ставка» (проходняк).
+export const OBVIOUS_COEF = 1.3;
 export function winPoints(coef: number): number {
   return Math.max(0, Math.round(WIN_K * Math.log(coef)));
 }

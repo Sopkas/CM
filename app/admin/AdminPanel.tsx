@@ -41,6 +41,7 @@ export function AdminPanel({
   predictionsOpenUntil,
   bracketLocked,
   playerPicks,
+  users,
 }: {
   invites: Invite[];
   matches: Match[];
@@ -49,6 +50,7 @@ export function AdminPanel({
   predictionsOpenUntil: string | null;
   bracketLocked: boolean;
   playerPicks: PlayerPick[];
+  users: { id: string; nickname: string; putintseva: boolean }[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -80,6 +82,18 @@ export function AdminPanel({
     const until = new Date(Date.now() + days * 86400_000).toISOString();
     setOpenUntil(until);
     saveConfig({ predictionsOpenUntil: until });
+  }
+
+  async function togglePutintseva(userId: string, on: boolean) {
+    setBusy("putintseva");
+    const res = await fetch("/api/admin/putintseva", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, on }),
+    });
+    if (!res.ok) alert("Ошибка");
+    router.refresh();
+    setBusy(null);
   }
 
   async function cancelPicks(body: { pickId?: string; userId?: string; matchId?: string }) {
@@ -229,6 +243,31 @@ export function AdminPanel({
           >
             {bracketLocked ? "Открыть сетку" : "Закрыть сетку"}
           </button>
+        </div>
+      </section>
+
+      {/* Правило Путинцева */}
+      <section className="rounded-xl border border-border bg-surface p-4 space-y-2">
+        <h2 className="font-semibold text-sm">🎯 Правило Путинцева</h2>
+        <p className="text-xs text-muted">
+          У отмеченных: очевидная ставка (кэф &lt; 1.30) два матча подряд → на втором весь
+          купон даёт 0 на плюс (минусы остаются). Им же показывается предупреждение.
+        </p>
+        <div className="space-y-1">
+          {users.map((u) => (
+            <div key={u.id} className="flex items-center justify-between bg-surface-2 rounded-lg px-3 py-1.5">
+              <span className="text-sm">{u.nickname}</span>
+              <button
+                onClick={() => togglePutintseva(u.id, !u.putintseva)}
+                disabled={busy === "putintseva"}
+                className={`text-xs px-3 py-1 rounded-lg font-semibold disabled:opacity-50 ${
+                  u.putintseva ? "bg-danger/20 text-danger" : "bg-surface text-muted"
+                }`}
+              >
+                {u.putintseva ? "под правилом ✓" : "включить"}
+              </button>
+            </div>
+          ))}
         </div>
       </section>
 

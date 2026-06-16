@@ -8,13 +8,29 @@ import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
-type Filter = "today" | "group" | "knockout" | "all";
+type Filter = "today" | "group" | "knockout" | "all" | "past";
 const TABS: { key: Filter; label: string }[] = [
   { key: "today", label: "Сегодня" },
   { key: "group", label: "Группы" },
   { key: "knockout", label: "Плей-офф" },
   { key: "all", label: "Все" },
+  { key: "past", label: "Прошедшие" },
 ];
+
+const PAST_DAYS = 3; // матчи старше этого числа дней → вкладка «Прошедшие»
+
+// Заголовок дня: Сегодня / Завтра / Вчера / «17 июня, пн».
+function dayLabel(d: Date): string {
+  const day = new Date(d);
+  day.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((day.getTime() - today.getTime()) / 86_400_000);
+  if (diff === 0) return "Сегодня";
+  if (diff === 1) return "Завтра";
+  if (diff === -1) return "Вчера";
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", weekday: "short" });
+}
 
 export default async function MatchesPage({
   searchParams,
@@ -24,6 +40,11 @@ export default async function MatchesPage({
   const { f } = await searchParams;
   const filter: Filter = (TABS.find((t) => t.key === f)?.key ?? "all") as Filter;
   const user = await getCurrentUser();
+
+  // Граница «прошедшего»: старше PAST_DAYS дней назад.
+  const cutoff = new Date();
+  cutoff.setHours(0, 0, 0, 0);
+  cutoff.setDate(cutoff.getDate() - PAST_DAYS);
 
   const where: Prisma.MatchWhereInput = {};
   if (filter === "group") where.stage = "group";
@@ -35,10 +56,13 @@ export default async function MatchesPage({
     end.setHours(23, 59, 59, 999);
     where.OR = [{ matchDate: { gte: start, lte: end } }, { status: "live" }];
   }
+  // Прошедшие — отдельно; остальные вкладки прячут старьё.
+  if (filter === "past") where.matchDate = { lt: cutoff };
+  else if (filter !== "today") where.matchDate = { gte: cutoff };
 
   const matches = await db.match.findMany({
     where,
-    orderBy: { matchDate: "asc" },
+    orderBy: { matchDate: filter === "past" ? "desc" : "asc" },
   });
 
   const summaries = user
@@ -49,6 +73,19 @@ export default async function MatchesPage({
     ...m,
     myPrediction: summaries.get(m.id) ?? null,
   }));
+
+  // Группировка по дням (порядок дней сохраняем как в выборке).
+  const groups: { key: string; label: string; items: MatchCardData[] }[] = [];
+  for (const m of cards) {
+    const d = new Date(m.matchDate);
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    let g = groups.find((x) => x.key === key);
+    if (!g) {
+      g = { key, label: dayLabel(d), items: [] };
+      groups.push(g);
+    }
+    g.items.push(m);
+  }
 
   return (
     <div className="space-y-4">
@@ -71,14 +108,22 @@ export default async function MatchesPage({
         ))}
       </div>
 
-      {cards.length === 0 ? (
+      {groups.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-6 text-center text-muted text-sm">
-          Нет матчей в этом фильтре. Запусти синк или добавь данные.
+          {filter === "past" ? "Прошедших матчей пока нет." : "Нет матчей в этом фильтре."}
         </div>
       ) : (
-        <div className="space-y-2">
-          {cards.map((m) => (
-            <MatchCard key={m.id} m={m} />
+        <div className="space-y-5">
+          {groups.map((g) => (
+            <section key={g.key} className="space-y-2">
+              <h2 className="text-xs font-semibold text-muted uppercase tracking-wide sticky top-14 bg-background/90 backdrop-blur py-1 z-10">
+                {g.label}
+                <span className="text-muted/60 font-normal"> · {g.items.length}</span>
+              </h2>
+              {g.items.map((m) => (
+                <MatchCard key={m.id} m={m} />
+              ))}
+            </section>
           ))}
         </div>
       )}

@@ -2,8 +2,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Dashboard as DashboardData } from "@/lib/breakdown";
+import type { UserVibe } from "@/lib/vibes";
 import { MARKET_BY_KEY } from "@/lib/markets";
 import { Avatar } from "@/components/Avatar";
+import { VibeBadges } from "@/components/VibeBadges";
 
 const OUTCOME_RU: Record<string, string> = {
   home: "П1",
@@ -13,9 +15,11 @@ const OUTCOME_RU: Record<string, string> = {
 
 export function Dashboard({
   data,
+  vibe,
   headerRight,
 }: {
   data: DashboardData;
+  vibe?: UserVibe;
   headerRight?: ReactNode;
 }) {
   const { user } = data;
@@ -32,6 +36,11 @@ export function Dashboard({
             <span className="font-mono">{user.totalPoints}</span> очков
             {user.isAdmin && <span className="ml-2 text-xs text-accent-2">админ</span>}
           </div>
+          {vibe && (
+            <div className="mt-1">
+              <VibeBadges vibe={vibe} showNames />
+            </div>
+          )}
         </div>
         {headerRight}
       </div>

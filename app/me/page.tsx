@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/session";
 import { LogoutButton } from "./LogoutButton";
 import { formatMatchDate, stageLabel } from "@/lib/format";
 import { getDashboard } from "@/lib/breakdown";
+import { getVibes } from "@/lib/vibes";
 import { Dashboard } from "@/components/Dashboard";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export default async function MePage() {
     getDashboard(user.id),
   ]);
   if (!dash) redirect("/join");
+  const vibe = (await getVibes()).get(user.id);
 
   // группируем выборы по матчу для списка «Мои прогнозы»
   const matchMap = new Map<
@@ -43,7 +45,7 @@ export default async function MePage() {
 
   return (
     <div className="space-y-5">
-      <Dashboard data={dash} headerRight={<LogoutButton />} />
+      <Dashboard data={dash} vibe={vibe} headerRight={<LogoutButton />} />
 
       {/* Быстрые ссылки на прогнозы */}
       <div className="grid grid-cols-2 gap-2 text-sm">

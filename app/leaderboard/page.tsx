@@ -3,21 +3,26 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { Avatar } from "@/components/Avatar";
+import { VibeBadges } from "@/components/VibeBadges";
+import { getVibes } from "@/lib/vibes";
 
 export const dynamic = "force-dynamic";
 
 export default async function LeaderboardPage() {
   const me = await getCurrentUser();
 
-  const users = await db.user.findMany({
-    orderBy: [{ totalPoints: "desc" }, { nickname: "asc" }],
-    include: {
-      marketPicks: {
-        where: { match: { status: "finished" } },
-        select: { pointsEarned: true },
+  const [users, vibes] = await Promise.all([
+    db.user.findMany({
+      orderBy: [{ totalPoints: "desc" }, { nickname: "asc" }],
+      include: {
+        marketPicks: {
+          where: { match: { status: "finished" } },
+          select: { pointsEarned: true },
+        },
       },
-    },
-  });
+    }),
+    getVibes(),
+  ]);
 
   const rows = users.map((u) => {
     const scored = u.marketPicks.length;
@@ -67,6 +72,7 @@ export default async function LeaderboardPage() {
                   <Avatar avatar={r.avatar} />
                   <span className="font-medium truncate">{r.nickname}</span>
                   {isMe && <span className="text-[10px] text-accent">ты</span>}
+                  <VibeBadges vibe={vibes.get(r.id)} />
                 </span>
                 <span className="text-right font-mono font-bold text-accent">
                   {r.points}

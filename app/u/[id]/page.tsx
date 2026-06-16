@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { getDashboard } from "@/lib/breakdown";
+import { getVibes } from "@/lib/vibes";
 import { Dashboard } from "@/components/Dashboard";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export default async function UserProfilePage({
 
   const dash = await getDashboard(id);
   if (!dash) notFound();
+  const vibe = (await getVibes()).get(id);
 
   return (
     <div className="space-y-5">
@@ -28,6 +30,7 @@ export default async function UserProfilePage({
 
       <Dashboard
         data={dash}
+        vibe={vibe}
         headerRight={
           me ? (
             <Link

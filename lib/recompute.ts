@@ -12,6 +12,7 @@ import {
 } from "@/lib/scoring";
 import { scoreMarketPick, OBVIOUS_COEF } from "@/lib/markets";
 import { computeGroupTable } from "@/lib/standings";
+import { settleCoupons } from "@/lib/bankroll";
 
 const SETTINGS = {
   champion: "actualChampion",
@@ -185,6 +186,9 @@ export async function recomputeAllPoints(): Promise<void> {
       db.user.update({ where: { id: u.id }, data: { totalPoints: u.total } }),
     ),
   ]);
+
+  // Купоны/банк считаются той же логикой evaluate, что и очки — держим в синхроне.
+  await settleCoupons();
 }
 
 interface GroupResult {

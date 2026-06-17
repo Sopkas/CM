@@ -36,7 +36,7 @@ function streakOf(matchNet: Agg["matchNet"]): UserVibe["streak"] {
 
 export async function getVibes(): Promise<Map<string, UserVibe>> {
   const [users, picks] = await Promise.all([
-    db.user.findMany({ select: { id: true, putintseva: true } }),
+    db.user.findMany({ select: { id: true, putintseva: true, rebuys: true } }),
     db.marketPick.findMany({
       select: {
         userId: true,
@@ -88,6 +88,7 @@ export async function getVibes(): Promise<Map<string, UserVibe>> {
     const a = agg.get(u.id);
     const titles: Title[] = [];
     if (u.putintseva) titles.push({ emoji: "🎯", name: "Путинцев", tone: "bad" });
+    if (u.rebuys > 0) titles.push({ emoji: "💸", name: "Слил банк", tone: "bad" });
     result.set(u.id, { titles, streak: a ? streakOf(a.matchNet) : null });
   }
 

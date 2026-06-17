@@ -14,7 +14,11 @@ const links = [
   { href: "/leaderboard", label: "Лидеры", icon: "🏆" },
 ];
 // Доп. пункты в десктоп-меню
-const extraLinks = [{ href: "/bonus", label: "Бонусы" }];
+const extraLinks = [
+  { href: "/tours", label: "Туры" },
+  { href: "/coupons", label: "Купоны" },
+  { href: "/bonus", label: "Бонусы" },
+];
 
 export function Nav({ user }: { user: NavUser }) {
   const pathname = usePathname();

@@ -22,6 +22,13 @@ enum BonusType {
   top_scorer
 }
 
+enum CouponStatus {
+  pending
+  won
+  lost
+  void
+}
+
 model User {
   id         String   @id @default(cuid())
   nickname   String   @unique
@@ -30,12 +37,15 @@ model User {
   isAdmin    Boolean  @default(false)
   putintseva Boolean  @default(false) // под «правилом Путинцева» (наказание за очевидные ставки)
   totalPoints Int     @default(0)
+  bankroll   Float    @default(1000) // виртуальный банк (фантики), пересчитывается идемпотентно
+  rebuys     Int      @default(0)    // сколько раз сливал банк в ноль и докупался
   createdAt  DateTime @default(now())
 
   marketPicks      MarketPick[]
   groupPicks       GroupPick[]
   knockoutPicks    KnockoutPick[]
   bonusPredictions BonusPrediction[]
+  coupons          Coupon[]
 
   @@map("users")
 }
@@ -83,6 +93,7 @@ model Match {
 
   marketPicks   MarketPick[]
   knockoutPicks KnockoutPick[]
+  couponLegs    CouponLeg[]
 
   @@index([status])
   @@index([matchDate])
@@ -164,4 +175,40 @@ model BonusPrediction {
 
   @@unique([userId, type])
   @@map("bonus_predictions")
+}
+
+// Купон виртуального банка: 1 нога = одиночка, 2+ = экспресс/парлей.
+// Кэфы перемножаются, всё-или-ничего. Ставится из банка (User.bankroll).
+model Coupon {
+  id        String       @id @default(cuid())
+  userId    String
+  stake     Float
+  status    CouponStatus @default(pending)
+  payout    Float        @default(0) // нетто в банк: won = stake*(prod-1), lost = -stake, void/pending = 0
+  createdAt DateTime     @default(now())
+  settledAt DateTime?
+
+  user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  legs CouponLeg[]
+
+  @@index([userId])
+  @@map("coupons")
+}
+
+// Нога купона: один выбор по рынку матча с зафиксированным кэфом.
+model CouponLeg {
+  id        String @id @default(cuid())
+  couponId  String
+  matchId   String
+  market    String
+  selection String
+  coef      Float
+  result    String @default("pending") // pending | won | lost | void
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  match  Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([couponId])
+  @@index([matchId])
+  @@map("coupon_legs")
 }

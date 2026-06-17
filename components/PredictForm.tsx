@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MARKETS, MARKET_TABS, MARKET_BY_KEY, selectionLabel, winPoints, OBVIOUS_COEF, type MarketDef } from "@/lib/markets";
 import type { Pricing, PricedOption } from "@/lib/odds";
+import { useBetSlip } from "@/components/BetSlipProvider";
 
 const MAX_PICKS = 3; // не больше 3 котировок на матч
 const LOSS = 3; // проигрыш за юнит ставки
@@ -44,6 +45,7 @@ export function PredictForm({
   putintsevaRisk = false,
 }: Props) {
   const router = useRouter();
+  const slip = useBetSlip();
   const [picks, setPicks] = useState<Record<string, string>>(initialPicks ?? {});
   const [stakes, setStakes] = useState<Record<string, number>>({});
   const [tab, setTab] = useState<string>(MARKET_TABS[0]);
@@ -103,6 +105,26 @@ export function PredictForm({
       else next["exact_score"] = v;
       return next;
     });
+  }
+
+  // Добавить выбор в банк-купон (парлей). Одна нога на матч — заменяет прежнюю.
+  function addToSlip(market: string, selection: string) {
+    const coef = coefFor(market, selection);
+    if (coef == null) {
+      setMsg("Этот рынок без кэфа — в купон банка нельзя");
+      return;
+    }
+    const def = MARKET_BY_KEY.get(market);
+    slip.add({
+      matchId,
+      matchLabel: `${homeTeam} — ${awayTeam}`,
+      market,
+      marketLabel: def ? `${def.label} · ${def.subtitle}` : market,
+      selection,
+      selectionLabel: selectionLabel(market, selection),
+      coef,
+    });
+    setMsg("Добавлено в купон банка 🧾 (1 нога на матч)");
   }
 
   function coefFor(market: string, selection: string): number | null {
@@ -281,6 +303,15 @@ export function PredictForm({
                       {s}
                     </button>
                   ))}
+                  {coef != null && (
+                    <button
+                      onClick={() => addToSlip(market, selection)}
+                      className="w-7 h-7 rounded-lg text-xs bg-surface-2 hover:bg-accent/20"
+                      title="в купон банка"
+                    >
+                      🧾
+                    </button>
+                  )}
                   <button
                     onClick={() => pick(market, selection)}
                     className="w-6 h-7 text-danger font-bold"

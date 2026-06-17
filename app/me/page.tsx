@@ -6,7 +6,10 @@ import { LogoutButton } from "./LogoutButton";
 import { formatMatchDate, stageLabel } from "@/lib/format";
 import { getDashboard } from "@/lib/breakdown";
 import { getVibes } from "@/lib/vibes";
+import { getBankStats } from "@/lib/bankroll";
 import { Dashboard } from "@/components/Dashboard";
+
+const fmtMoney = (n: number) => Math.round(n).toLocaleString("ru-RU");
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +26,10 @@ export default async function MePage() {
     getDashboard(user.id),
   ]);
   if (!dash) redirect("/join");
-  const vibe = (await getVibes()).get(user.id);
+  const [vibe, bankStat] = await Promise.all([
+    getVibes().then((m) => m.get(user.id)),
+    getBankStats().then((m) => m.get(user.id)),
+  ]);
 
   // группируем выборы по матчу для списка «Мои прогнозы»
   const matchMap = new Map<
@@ -47,8 +53,32 @@ export default async function MePage() {
     <div className="space-y-5">
       <Dashboard data={dash} vibe={vibe} headerRight={<LogoutButton />} />
 
+      {/* Виртуальный банк */}
+      <Link
+        href="/coupons"
+        className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3"
+      >
+        <span className="flex items-center gap-2 font-semibold">💰 Банк</span>
+        <span className="flex items-center gap-4 text-sm">
+          <span className="font-mono font-bold text-accent">{fmtMoney(user.bankroll)}</span>
+          <span className={`font-mono ${(bankStat?.roi ?? 0) >= 0 ? "text-accent" : "text-danger"}`}>
+            {bankStat?.roi == null ? "ROI —" : `ROI ${bankStat.roi > 0 ? "+" : ""}${bankStat.roi}%`}
+          </span>
+          {bankStat && bankStat.pending > 0 && (
+            <span className="text-xs text-muted">{bankStat.pending} в игре</span>
+          )}
+          <span className="text-muted">→</span>
+        </span>
+      </Link>
+
       {/* Быстрые ссылки на прогнозы */}
       <div className="grid grid-cols-2 gap-2 text-sm">
+        <Link href="/tours" className="text-center bg-surface-2 rounded-lg py-2">
+          🏟️ Лига по турам
+        </Link>
+        <Link href="/coupons" className="text-center bg-surface-2 rounded-lg py-2">
+          🧾 Мои купоны
+        </Link>
         <Link href="/bracket" className="text-center bg-surface-2 rounded-lg py-2">
           🗂️ Моя сетка
         </Link>

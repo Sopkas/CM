@@ -413,8 +413,8 @@ const mOutcomeTotal = (p: Period): MarketDef => {
     evaluate: (sel, c) => {
       const s = pScore(c, p);
       if (!s) return null;
-      const [o, d, ln] = sel.split("_");
-      const line = parseFloat(`${ln}`.replace("_", "."));
+      const [o, d, ...rest] = sel.split("_");
+      const line = parseFloat(rest.join(".")); // "3_5" → ["3","5"] → 3.5
       const a = evalOutcome(o, s);
       const b = evalTotalDir(d, s.h + s.a, line);
       return a == null || b == null ? null : a && b;
@@ -438,8 +438,8 @@ const mDcTotal = (p: Period): MarketDef => {
     evaluate: (sel, c) => {
       const s = pScore(c, p);
       if (!s) return null;
-      const [dc, d, ln] = sel.split("_");
-      const line = parseFloat(`${ln}`.replace("_", "."));
+      const [dc, d, ...rest] = sel.split("_");
+      const line = parseFloat(rest.join(".")); // "2_5" → ["2","5"] → 2.5
       const a = evalDC(dc, s);
       const b = evalTotalDir(d, s.h + s.a, line);
       return a == null || b == null ? null : a && b;
@@ -515,8 +515,8 @@ const mOutcomeOrTotal = (): MarketDef => {
     evaluate: (sel, c) => {
       const s = pScore(c, "match");
       if (!s) return null;
-      const [o, d, ln] = sel.split("_");
-      const line = parseFloat(`${ln}`.replace("_", "."));
+      const [o, d, ...rest] = sel.split("_");
+      const line = parseFloat(rest.join(".")); // "3_5" → ["3","5"] → 3.5
       const a = evalOutcome(o, s);
       const b = evalTotalDir(d, s.h + s.a, line);
       return a == null || b == null ? null : a || b;
